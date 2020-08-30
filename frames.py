@@ -105,7 +105,8 @@ class regularFrame:
     16b  Frame number counter
     128b payload
     16b  CRC-16 chksum
-    4b   tail (convenc)
+
+    4b   tail (convenc) (not implemented here)
     """
     sz = int((16+48+16+128)/8)
     lich_chunk_sz = int(48/8);

@@ -153,7 +153,7 @@ class Client:
                 # print(binascii.hexlify(d, " ", -4))
                 # fd.write(d)
                 sock.sendto( d, self.server )
-            t# fd.close()
+            # fd.close()
             # print("to send;", len(d))
             try:
                 while 1:
