@@ -147,13 +147,13 @@ class Client:
             if not sentLICH:
                 pkts = [LICH] + pkts
                 sentLICH = True
-            # fd = open("out.m17","ab")
+            fd = open("out.m17","ab")
             for pkt in pkts:
                 d = bytes(pkt)
-                # print(binascii.hexlify(d, " ", -4))
-                # fd.write(d)
+                print(binascii.hexlify(d, " ", -4))
+                fd.write(d)
                 sock.sendto( d, self.server )
-            # fd.close()
+            fd.close()
             # print("to send;", len(d))
             try:
                 while 1:
