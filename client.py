@@ -16,6 +16,7 @@ from .framer import M17_IPFramer
 from .const import *
 from .misc import example_bytes,_x
 
+
 class Client:
     def __init__(self, mode, host, port=default_port, udp=False):
         self.loopback_test = 0
@@ -40,9 +41,9 @@ class Client:
         self.networking.start()
 
         self.audio_processor_out = threading.Thread(target=self.audio_processor_worker_in, args=(aprecv_q, spkr_q) )
+        self.audio_processor_out.start()
         self.audio_processor_in = threading.Thread(target=self.audio_processor_worker_out, args=(mic_q, apsend_q) )
         self.audio_processor_in.start()
-        self.audio_processor_out.start()
 
         self.qs = {
                 "mic": mic_q,
@@ -129,9 +130,14 @@ class Client:
         framer = M17_IPFramer(
                 dst=you,
                 src=me,
-                ftype=5, nonce=example_bytes(16) )
+                ftype=5, nonce=b"\xbe\xef"*8 )
 
+        now = time.time()
+        last = now
+        accumulated_delay = 0
+        deadline = .02
         while 1:
+            now = time.time()
             if self.loopback_test == 2:
                 aprecv_q.put( apsend_q.get() )
                 continue
@@ -139,29 +145,33 @@ class Client:
             d = apsend_q.get() + apsend_q.get() #need 16 bytes for M17 payload, each element on q should be 8 bytes
             #TODO generalize to support other Codec2 sizes, and grab data until enough is here to send
             #TODO payload_stream needs to return packets and any unused data from the buffer to support that functionality
-
             pkts = framer.payload_stream(d)
-            fd = open("out.m17","ab")
+            # fd = open("out.m17","ab")
             for pkt in pkts:
                 d = bytes(pkt)
-                print(_x(d))
-                fd.write(d)
+                # print(_x(d))
+                # fd.write(d)
                 sock.sendto( d, self.server )
-            fd.close()
-            # print("to send;", len(d))
+            # fd.close()
             try:
                 while 1:
+                    #catch up if we get a burst
                     x, conn = sock.recvfrom( encoded_buf_size ) 
                     # print(conn)
-                    print("Got: ",_x(x))
+                    # print("Got: ",_x(x))
                     f = ipFrame.from_bytes(x)
                     aprecv_q.put(f.payload)
             except BlockingIOError as e:
+                #nothing to read
                 # print(e)
-                continue
+                pass
             except Exception as e:
                 raise(e)
                 print(e)
+            loop_dur = now - last 
+            accumulated_delay += loop_dur-deadline
+            print("%.4f"%(accumulated_delay))
+            last = now
 
     def tcp_networker(self, apsend_q, aprecv_q):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

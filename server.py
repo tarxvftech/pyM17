@@ -31,8 +31,8 @@ class GatewayHandler(socketserver.StreamRequestHandler):
                     raise(Exception("Empty read"))
                 with self.qs_lock:
                     for q in self.qs:
-                        if q == my_q:
-                            continue
+                        # if q == my_q:
+                            # continue
                         q.put( x )
                 if not my_q.empty():
                     self.wfile.write(my_q.get())
