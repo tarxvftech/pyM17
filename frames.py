@@ -17,6 +17,7 @@ class initialLICH:
     [4b  tail (for convenc)]
     """
     sz = int((16+48+48+16+128)/8)
+    sz_wo_sync = int((48+48+16+128)/8)
     def __init__(self, 
             framer=None, 
 
@@ -42,10 +43,10 @@ class initialLICH:
 
     def __bytes__(self):
         b = SYNC
-        b += bitstruct.pack("u48",self.framer.dst.addr)
-        b += bitstruct.pack("u48",self.framer.src.addr)
-        b += bitstruct.pack("u16",self.framer.ftype)
-        b += self.framer.nonce
+        b += bitstruct.pack("u48",self.dst.addr)
+        b += bitstruct.pack("u48",self.src.addr)
+        b += bitstruct.pack("u16",self.ftype)
+        b += self.nonce
         return b
 
     def chunks(self):
@@ -139,10 +140,10 @@ class regularFrame:
         # b += bitstruct.pack("u4",0)
         return b
 
-    @staticmethod
-    def from_bytes(data:bytes):
-        d = regularFrame.dict_from_bytes(data)
-        return regularFrame(**d)
+    @classmethod
+    def from_bytes(cls,data:bytes):
+        d = cls.dict_from_bytes(data)
+        return cls(**d)
 
     @staticmethod
     def dict_from_bytes(data:bytes):
@@ -155,8 +156,50 @@ class regularFrame:
         d["lich_chunk"] = data[0:6]
         d["frame_number"]= bitstruct.unpack("u16", data[6:8])[0]
         d["payload"] = data[8:8+16]
-        #ignore the CRC, if we're over TCP that's covered anyway
+        #ignore the CRC, it's not implemented yet
         # d["chksum"] = bitstruct.unpack("u16", data[8+16:8+16+2])[0]
+        return d
+
+class ipFrame(regularFrame):
+    """
+    240b: Full LICH without sync: 
+        48b  Address dst
+        48b  Address src
+        16b  int(M17_Frametype)
+        128b nonce (for encryption)
+    16b  Frame number counter
+    128b payload
+    16b  CRC-16 chksum
+    total: 400 b, 50 B
+    """
+    sz = int(initialLICH.sz_wo_sync + (16+128+16)/8)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args,**kwargs)
+        if not self.LICH:
+            raise(Exception("ipFrames need a full LICH passed"))
+
+    def __str__(self):
+        return "M17[%d]: %s"%(self.frame_number,_x(self.payload))
+        return "LICH: " + self.src.callsign + " =[%d]> "%(self.ftype) + self.dst.callsign
+
+    def __bytes__(self):
+        b=b""
+        b += bytes(self.LICH)[2:] #2: to strip the SYNC
+        b += bitstruct.pack("u16", self.frame_number)
+        b += bytes(self.payload)
+        b += bytes([0]*2) #crc16, TODO
+        assert self.sz == 50 == len(b)
+        return b
+
+    @staticmethod
+    def dict_from_bytes(data:bytes):
+        d = {}
+        lich_end = initialLICH.sz_wo_sync
+        d["LICH"] = initialLICH.from_bytes(data[0:lich_end])
+        payload_start = lich_end+2
+        d["frame_number"]= bitstruct.unpack("u16", data[lich_end:payload_start])[0]
+        d["payload"] = data[payload_start:payload_start+16]
+        # d["chksum"] = bitstruct.unpack("u16", ...
         return d
 
 def is_LICH( b:bytes ):
@@ -164,7 +207,8 @@ def is_LICH( b:bytes ):
     No real way to tell other than size with the implementation in this file
     in RF, they would be the same size
     """
-    return len(b) in [initialLICH.sz, initialLICH.sz-2]
+    return len(b) in [initialLICH.sz, initialLICH.sz_wo_sync]
+
 class M17_Frametype(int):
 
     """

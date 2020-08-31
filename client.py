@@ -11,10 +11,10 @@ import multiprocessing
 
 from .const import default_port
 from .address import Address
-from .framer import M17_Framer
-from .parser import M17_Parser
+from .frames import ipFrame
+from .framer import M17_IPFramer
 from .const import *
-from .misc import *
+from .misc import example_bytes,_x
 
 class Client:
     def __init__(self, mode, host, port=default_port, udp=False):
@@ -126,13 +126,10 @@ class Client:
         me = Address(callsign="W2FBI")
         print(you)
         print(me)
-        framer = M17_Framer(
+        framer = M17_IPFramer(
                 dst=you,
                 src=me,
                 ftype=5, nonce=example_bytes(16) )
-        LICH = framer.makeLICH()
-        sentLICH = False
-        parser = M17_Parser()
 
         while 1:
             if self.loopback_test == 2:
@@ -144,13 +141,10 @@ class Client:
             #TODO payload_stream needs to return packets and any unused data from the buffer to support that functionality
 
             pkts = framer.payload_stream(d)
-            if not sentLICH:
-                pkts = [LICH] + pkts
-                sentLICH = True
             fd = open("out.m17","ab")
             for pkt in pkts:
                 d = bytes(pkt)
-                print(binascii.hexlify(d, " ", -4))
+                print(_x(d))
                 fd.write(d)
                 sock.sendto( d, self.server )
             fd.close()
@@ -159,12 +153,9 @@ class Client:
                 while 1:
                     x, conn = sock.recvfrom( encoded_buf_size ) 
                     # print(conn)
-                    # print("Got: ",_x(x))
-                    parser.in_bytes(x)
-                    fs = parser.out_c2_frames()
-                    for f in fs:
-                        # print(f)
-                        aprecv_q.put(f)
+                    print("Got: ",_x(x))
+                    f = ipFrame.from_bytes(x)
+                    aprecv_q.put(f.payload)
             except BlockingIOError as e:
                 # print(e)
                 continue

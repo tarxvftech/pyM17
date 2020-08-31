@@ -3,7 +3,12 @@ from .frames import regularFrame, initialLICH, is_LICH
 from .const import *
 from .misc import *
 
-class M17_Parser:
+class M17_RFParser:
+    """
+    assumes there are SYNCs between frames
+    if not, they have to be shoveled in here separately in a list from a UDP socket
+    "The recvfrom function reads one packet from the socket socket into the buffer buffer. The size argument specifies the maximum number of bytes to be read. " ~https://www.gnu.org/software/libc/manual/html_node/Receiving-Datagrams.html
+    """
     b=b""
     frames = []
     def in_bytes(self,data:bytes):
@@ -28,7 +33,7 @@ class M17_Parser:
             self.b += data
 
     def out_c2_frames(self):
-        if len(self.frames) <= 200: 
+        if len(self.frames) <= 100: 
             #TODO we're running slowly, so store some up so it plays back without stuttering for demo purposes
             return []
         fs = self.frames
