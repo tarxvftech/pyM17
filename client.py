@@ -6,7 +6,6 @@ import numpy
 import socket
 import threading
 import pycodec2
-import pysoundcard
 import multiprocessing
 
 from .const import default_port
@@ -17,6 +16,151 @@ from .const import *
 from .misc import example_bytes,_x
 
 
+def networking_recv(aprecv_q):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("0.0.0.0", self.server[1]))
+    # sock.setblocking(False)
+    self.sock = sock
+    while 1:
+        try:
+            #catch up if we get a burst
+            x, conn = sock.recvfrom( encoded_buf_size ) 
+            # print(conn)
+            # print("Got: ",_x(x))
+            f = ipFrame.from_bytes(x)
+            aprecv_q.put(f.payload)
+        except BlockingIOError as e:
+            #nothing to read
+            print(e)
+            pass
+        except Exception as e:
+            raise(e)
+            print(e)
+
+def codec2setup(mode):
+    c2 = pycodec2.Codec2( mode )
+    conrate = c2.samples_per_frame()
+    bitframe = c2.bits_per_frame()
+    return [c2,conrate,bitframe]
+
+
+def mic_audio(config,inq,outq):
+    import soundcard as sc
+    default_mic = sc.default_microphone()
+    print(default_mic)
+    with default_mic.recorder(samplerate=8000, channels=1) as mic:
+        while 1:
+            audio = mic.record(numframes=config.conrate)
+            outq.put(audio)
+
+def codec2enc(config,inq,outq):
+    while 1:
+        audio = inq.get()
+        # assert len(audio) == config.conrate
+        # if audio.dtype != numpy.int16:
+            # audio = audio.astype(numpy.int16)
+        # audio *= 2**15
+        #audio from soundcard is floats from -1 to 1
+        #these have to be multiplied such that they map from -32768:32767
+        #this has to be done before astype, because astype is just a cast, e.g.
+        #you then would have int16s with values -1,0,1
+        audio = audio.flatten() * 32767
+        audio = audio.astype("<h") 
+        c2bits = config.c2.encode(audio)
+
+        # assert len(c2bits) == config.bitframe/8
+        outq.put(c2bits)
+
+def m17frame(config,inq,outq):
+    you = Address(callsign="SP5WWP")
+    me = Address(callsign="W2FBI")
+    print(you)
+    print(me)
+    framer = M17_IPFramer(
+            dst=you,
+            src=me,
+            ftype=5, nonce=b"\xbe\xef"*8 )
+    print("m17frame ready")
+    while 1:
+        d = inq.get() + inq.get() 
+        #need 16 bytes for M17 payload, each element on q should be 8 bytes
+        #TODO generalize to support other Codec2 sizes, and grab data until enough is here to send
+        #TODO payload_stream needs to return packets and any unused data from the buffer to support that functionality
+        pkts = framer.payload_stream(d)
+        for pkt in pkts:
+            outq.put(pkt)
+
+def tobytes(config,inq,outq):
+    print("tobytes ready")
+    while 1:
+        outq.put(bytes(inq.get()))
+
+def networking_send(config,inq,outq):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setblocking(False)
+    print("networking send ready")
+    now = time.time()
+    deadline = .02
+    while 1:
+        bs = inq.get()
+        print(_x(bs))
+        sock.sendto( bs, (config.server,config.port) )
+
+
+class dattr(dict):
+    def __getattr__(self,name):
+        return self[name]
+
+def modular_client():
+    tx_chain = [mic_audio, codec2enc, m17frame, tobytes, networking_send]
+    # rx_chain = [networking_recv, toframes, getpayload, codec2dec, spkr]
+    rx_chain = []
+    modules = {
+            "_setup":[tx_chain, rx_chain]
+            }
+    c2,conrate,bitframe = codec2setup(3200)
+    print("conrate, bitframe = [%d,%d]"%(conrate,bitframe) )
+    config = dattr({
+            "server":"localhost",
+            "port":55533,
+            "c2":c2,
+            "conrate":conrate,
+            "bitframe":bitframe,
+            "queues":[]
+            })
+    """
+    queues:
+    n -> n2 -> n3 -> n4
+    n has no inq
+    n4 has no outq
+    outq for n is inq for n2, etc
+    for each chain:
+        0 -> 1 -> 2 -> 3
+          0    1     2
+        if there's an old outq, inq=
+        unless at end of chain, create an outq for each fn, outq=
+
+    """
+    for chainidx,chain in enumerate(modules["_setup"]):
+        inq = None
+        for fnidx,fn in enumerate(chain):
+            print(fn.__name__)
+            if fnidx != len(chain):
+                outq = multiprocessing.Queue()
+            else:
+                outq = None
+            process = multiprocessing.Process(target=fn, args=(config, inq, outq))
+            modules[fn.__name__] = {
+                    "inq":inq,
+                    "outq":outq,
+                    "process":process
+                    }
+            process.start()
+            inq = outq
+
+
+
+
 class Client:
     def __init__(self, mode, host, port=default_port, udp=False):
         self.loopback_test = 0
@@ -24,25 +168,22 @@ class Client:
         self.server = (host,port)
         print("sending to: ",self.server)
 
-        mic_q = queue.Queue()
-        spkr_q = queue.Queue()
-
-        apsend_q = queue.Queue()
-        aprecv_q = queue.Queue()
+        mic_q = multiprocessing.Queue()
+        spkr_q = multiprocessing.Queue()
+        apsend_q = multiprocessing.Queue()
+        aprecv_q = multiprocessing.Queue()
 
         [conrate, bitframe] = self.setup_audio_processor(mode)
-        print("conrate, bitframe = [%d,%d]"%(conrate,bitframe) )
+
         self.audio_settings = self.setup_audio(mic_q, spkr_q, conrate)
-        self.soundcard.start()
-        if udp:
-            self.networking = threading.Thread(target=self.udp_networker, args=(apsend_q, aprecv_q))
-        else:
-            self.networking = threading.Thread(target=self.tcp_networker, args=(apsend_q, aprecv_q))
+        self.start_audio()
+
+        self.networking = multiprocessing.Process(target=self.udp_networker, args=(apsend_q, aprecv_q))
         self.networking.start()
 
-        self.audio_processor_out = threading.Thread(target=self.audio_processor_worker_in, args=(aprecv_q, spkr_q) )
+        self.audio_processor_out = multiprocessing.Process(target=self.audio_processor_worker_in, args=(aprecv_q, spkr_q) )
         self.audio_processor_out.start()
-        self.audio_processor_in = threading.Thread(target=self.audio_processor_worker_out, args=(mic_q, apsend_q) )
+        self.audio_processor_in = multiprocessing.Process(target=self.audio_processor_worker_out, args=(mic_q, apsend_q) )
         self.audio_processor_in.start()
 
         self.qs = {
@@ -53,33 +194,12 @@ class Client:
                 }
 
 
-    def stop_audio():
+    def stop_audio(self):
         self.soundcard.stop()
 
-    def start_audio():
+    def start_audio(self):
         self.soundcard.start()
 
-    def setup_audio( self, mic_q, spkr_q, conrate ):
-
-        pa_rate = 8000
-        sampwidth = 2
-        pa_channels = 1
-
-        def callback(in_data, out_data, time_info, status):
-            if self.loopback_test == 1:
-                out_data[:] = in_data
-                return pysoundcard.continue_flag
-            mic_q.put(in_data)
-            # print(len(in_data), conrate)
-            assert len(in_data) == conrate
-            if spkr_q.empty():
-                out_data[:] = numpy.zeros( (conrate,1) )
-            else:
-                out_data[:] = spkr_q.get_nowait().reshape( (conrate,1) )
-            return pysoundcard.continue_flag
-
-        s = pysoundcard.Stream(channels=1, dtype=numpy.int16, samplerate=pa_rate, blocksize=conrate, callback=callback)
-        self.soundcard = s
     
     def audio_processor_worker_in(self, aprecv_q, spkr_q):
         c2 = self.c2
@@ -108,70 +228,7 @@ class Client:
             apsend_q.put(c2_bits)
 
 
-    def setup_audio_processor(self, mode):
-        c2 = pycodec2.Codec2( mode )
-        conrate = c2.samples_per_frame()
-        bitframe = c2.bits_per_frame()
-        self.c2 = c2
-        return [conrate, bitframe]
 
-    def udp_networker(self, apsend_q, aprecv_q):
-        """send only for now"""
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind(("0.0.0.0", self.server[1]))
-        sock.setblocking(False)
-        self.sock = sock
-
-        print("networker sendto", self.server)
-        you = Address(callsign="SP5WWP")
-        me = Address(callsign="W2FBI")
-        print(you)
-        print(me)
-        framer = M17_IPFramer(
-                dst=you,
-                src=me,
-                ftype=5, nonce=b"\xbe\xef"*8 )
-
-        now = time.time()
-        last = now
-        accumulated_delay = 0
-        deadline = .02
-        while 1:
-            now = time.time()
-            if self.loopback_test == 2:
-                aprecv_q.put( apsend_q.get() )
-                continue
-
-            d = apsend_q.get() + apsend_q.get() #need 16 bytes for M17 payload, each element on q should be 8 bytes
-            #TODO generalize to support other Codec2 sizes, and grab data until enough is here to send
-            #TODO payload_stream needs to return packets and any unused data from the buffer to support that functionality
-            pkts = framer.payload_stream(d)
-            # fd = open("out.m17","ab")
-            for pkt in pkts:
-                d = bytes(pkt)
-                # print(_x(d))
-                # fd.write(d)
-                sock.sendto( d, self.server )
-            # fd.close()
-            try:
-                while 1:
-                    #catch up if we get a burst
-                    x, conn = sock.recvfrom( encoded_buf_size ) 
-                    # print(conn)
-                    # print("Got: ",_x(x))
-                    f = ipFrame.from_bytes(x)
-                    aprecv_q.put(f.payload)
-            except BlockingIOError as e:
-                #nothing to read
-                # print(e)
-                pass
-            except Exception as e:
-                raise(e)
-                print(e)
-            loop_dur = now - last 
-            accumulated_delay += loop_dur-deadline
-            print("%.4f"%(accumulated_delay))
-            last = now
 
     def tcp_networker(self, apsend_q, aprecv_q):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
