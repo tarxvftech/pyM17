@@ -4,8 +4,9 @@ import time
 import queue
 import numpy
 import socket
-import threading
+import binascii
 import pycodec2
+import threading
 import multiprocessing
 
 from .const import default_port
@@ -43,17 +44,39 @@ def codec2setup(mode):
     bitframe = c2.bits_per_frame()
     return [c2,conrate,bitframe]
 
+def ptt(config, inq, outq):
+    while 1:
+        x = inq.get()
+        if config.ptt():
+            outq.put(x)
+
+def vox(config,inq,outq):
+    last = None
+    repeat_count = 0
+    config['vox_silence_threshold'] = 10
+    while 1:
+        x = inq.get()
+        if x == last:
+            repeat_count += 1
+        else:
+            repeat_count = 0
+        last = x
+        if repeat_count > config.vox_silence_threshold:
+            continue
+        outq.put(x)
 
 def mic_audio(config,inq,outq):
     import soundcard as sc
     default_mic = sc.default_microphone()
     print(default_mic)
-    with default_mic.recorder(samplerate=8000, channels=1) as mic:
+    with default_mic.recorder(samplerate=8000, channels=1, blocksize=config.conrate) as mic:
         while 1:
             audio = mic.record(numframes=config.conrate)
             outq.put(audio)
 
 def codec2enc(config,inq,outq):
+    silence_count = 0
+    last = None
     while 1:
         audio = inq.get()
         # assert len(audio) == config.conrate
@@ -70,6 +93,8 @@ def codec2enc(config,inq,outq):
 
         # assert len(c2bits) == config.bitframe/8
         outq.put(c2bits)
+
+
 
 def m17frame(config,inq,outq):
     you = Address(callsign="SP5WWP")
@@ -111,8 +136,17 @@ class dattr(dict):
     def __getattr__(self,name):
         return self[name]
 
+
+def check_ptt():
+    if int(time.time()/2) % 2 == 0:
+        return True
+    else:
+        return False
+
 def modular_client():
-    tx_chain = [mic_audio, codec2enc, m17frame, tobytes, networking_send]
+    #modules need to be cleaned up on exit
+    #
+    tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, networking_send]
     # rx_chain = [networking_recv, toframes, getpayload, codec2dec, spkr]
     rx_chain = []
     modules = {
@@ -126,7 +160,8 @@ def modular_client():
             "c2":c2,
             "conrate":conrate,
             "bitframe":bitframe,
-            "queues":[]
+            "queues":[],
+            "ptt":check_ptt
             })
     """
     queues:

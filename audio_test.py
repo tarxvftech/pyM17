@@ -1,11 +1,14 @@
-
+import sys
 import time
 import numpy
 import pycodec2
 import pysoundcard
+import soundcard
+import matplotlib
+import matplotlib.pyplot as plt
 
 
-def audio_test(mode):
+def audio_test_pysoundcard(mode):
     mode = int(mode)
     c2 = pycodec2.Codec2( mode )
     conrate = c2.samples_per_frame()
@@ -30,4 +33,43 @@ def audio_test(mode):
         time.sleep(.017)
     s.stop()
 
-audio_test(3200)
+def audio_test_soundcard(mode):
+    import soundcard as sc
+
+    mode = int(mode)
+    c2 = pycodec2.Codec2( mode )
+    conrate = c2.samples_per_frame()
+    bitframe = c2.bits_per_frame()
+    pa_rate = 8000
+
+    default_mic = sc.default_microphone()
+    default_speaker = sc.default_speaker()
+    print(default_mic, default_speaker)
+    sc_config= {
+            "samplerate": pa_rate,
+            "channels": 1,
+            "blocksize": conrate
+            }
+    with default_mic.recorder(**sc_config) as mic,\
+        default_speaker.player(**sc_config) as sp:
+        fig, ax = plt.subplots()
+        ax.grid()
+        plt.ion()
+        plt.show()
+        while 1:
+            audio = mic.record(numframes=conrate)
+            audio = audio.flatten()
+            # ax.plot(audio)
+            audio = audio * 32767
+            audio = audio.astype("<h") 
+            c2_bits = c2.encode( audio )
+            audio = c2.decode( c2_bits )
+            audio = audio.astype("float")
+            audio = audio / 32767
+            # ax.plot(audio)
+            # plt.show()
+            sp.play(audio)
+            # plt.pause(.001)
+            # ax.clear()
+
+vars()[sys.argv[1]](*sys.argv[2:])
