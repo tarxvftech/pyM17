@@ -47,17 +47,17 @@ def audio_test_soundcard(mode):
     print(default_mic, default_speaker)
     sc_config= {
             "samplerate": pa_rate,
-            "channels": 1,
             "blocksize": conrate
             }
-    with default_mic.recorder(**sc_config) as mic,\
-        default_speaker.player(**sc_config) as sp:
-        fig, ax = plt.subplots()
-        ax.grid()
-        plt.ion()
-        plt.show()
+    with default_mic.recorder(**sc_config,channels=1) as mic,\
+        default_speaker.player(**sc_config,channels=1) as sp:
+        # fig, ax = plt.subplots()
+        # ax.grid()
+        # plt.ion()
+        # plt.show()
         while 1:
-            audio = mic.record(numframes=conrate)
+            audio = mic.record(numframes=conrate) #.transpose()
+            # audio = audio[1] + audio[0]
             audio = audio.flatten()
             # ax.plot(audio)
             audio = audio * 32767

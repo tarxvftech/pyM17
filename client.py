@@ -79,14 +79,6 @@ def codec2enc(config,inq,outq):
     last = None
     while 1:
         audio = inq.get()
-        # assert len(audio) == config.conrate
-        # if audio.dtype != numpy.int16:
-            # audio = audio.astype(numpy.int16)
-        # audio *= 2**15
-        #audio from soundcard is floats from -1 to 1
-        #these have to be multiplied such that they map from -32768:32767
-        #this has to be done before astype, because astype is just a cast, e.g.
-        #you then would have int16s with values -1,0,1
         audio = audio.flatten() * 32767
         audio = audio.astype("<h") 
         c2bits = config.c2.encode(audio)
@@ -143,7 +135,7 @@ def check_ptt():
     else:
         return False
 
-def modular_client():
+def modular_client(host="localhost",port=55533):
     #modules need to be cleaned up on exit
     #
     tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, networking_send]
@@ -155,8 +147,8 @@ def modular_client():
     c2,conrate,bitframe = codec2setup(3200)
     print("conrate, bitframe = [%d,%d]"%(conrate,bitframe) )
     config = dattr({
-            "server":"localhost",
-            "port":55533,
+            "server":host,
+            "port":port,
             "c2":c2,
             "conrate":conrate,
             "bitframe":bitframe,
