@@ -97,3 +97,15 @@ int main(int argc, char **argv){
 
 	return 0;
 }
+
+/*
+ * output from git aa28914f1813be97878df0fecf1c0a1d59964187
+0x41 == nonce
+0x42 == payload
+           destination         source       type (16 bits)
+        _________________ _________________ _____
+0x0000  00 00 00 c4 cc 5e 00 00 01 61 ae 1f 00 05 41 41
+0x0010  41 41 41 41 41 41 41 41 41 41 41 41 41 41 00 0d <- frame number, uin16
+0x0020  42 42 42 42 42 42 42 42 42 42 42 42 42 42 42 42
+0x0030  ff ff <- CRC16
+*/
