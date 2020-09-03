@@ -162,7 +162,7 @@ class regularFrame:
 
 class ipFrame(regularFrame):
     """
-    240b: Full LICH without sync: 
+    240b/30B: Full LICH without sync: 
         48b  Address dst
         48b  Address src
         16b  int(M17_Frametype)
