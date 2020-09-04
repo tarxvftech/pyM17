@@ -8,6 +8,8 @@ import binascii
 import pycodec2
 import threading
 import multiprocessing
+import scipy 
+import scipy.signal
 
 from .const import default_port
 from .address import Address
@@ -32,6 +34,19 @@ def tee(header):
             else:
                 print(header, x)
             outq.put(x)
+    return fn
+
+def teefile(filename):
+    def fn(config, inq, outq):
+        with open(filename,"wb") as fd:
+            try:
+                while 1:
+                    x = inq.get()
+                    fd.write(x)
+                    fd.flush()
+                    outq.put(x)
+            except:
+                fd.close()
     return fn
 
 def delay(size):
@@ -109,7 +124,7 @@ def spkr_audio(config,inq,outq):
                             sp.play(b)
                         buf = []
                 sp.play(audio)
-            except:
+            except queue.Empty as e:
                 #and if we have no data, just play zeros
                 silence()
 
@@ -176,29 +191,75 @@ def codec2dec(config,inq,outq):
         audio = config.codec2.c2.decode(c2bits)
         outq.put(audio)
 
-def udp_send(config,inq,outq):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setblocking(False)
+def udp_send(sendto):
+    """
+    sendto is the standard host,port) tuple like ("localhost",17000)
+    """
+    def fn(config,inq,outq):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setblocking(False)
+        while 1:
+            bs = inq.get()
+            sock.sendto( bs, sendto )
+    return fn
 
-    now = time.time()
-    deadline = .02
+def udp_recv(port):
+    def fn(config,inq,outq):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("0.0.0.0", port))
+        # sock.setblocking(False)
+        while 1:
+            x, conn = sock.recvfrom( encoded_buf_size ) 
+            #but what do I do with conn data, anything?
+            # print(_x(x))
+            outq.put(x)
+    return fn
 
-    c = config.networking
-    while 1:
-        bs = inq.get()
-        sock.sendto( bs, (c.server,c.port) )
+def integer_decimate(i):
+    """
+    uh oh. I'm poorly reimplementing gnuradio blocks, thats a bad sign
+    """
+    def fn(config,inq,outq):
+        while 1:
+            x = inq.get()
+            de = x[::i]
+            outq.put( x[::i] )
+    return fn
 
-def udp_recv(config,inq,outq):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("0.0.0.0", config.networking.port))
-    # sock.setblocking(False)
-    while 1:
-        x, conn = sock.recvfrom( encoded_buf_size ) 
-        #but what do I do with conn data, anything?
-        print(_x(x))
-        outq.put(x)
+def integer_interpolate(i):
+    """
+    uh oh. I'm poorly reimplementing gnuradio blocks, thats a bad sign
+    """
+    def fn(config,inq,outq):
+        while 1:
+            x = inq.get()
+            y,x1 = scipy.signal.resample(x, len(x)*2, range(len(x)))
+            print(x)
+            print(y)
+            # print( len(y),len(x)*i)
+            # assert len(y) == len(x)*i
 
+            outq.put( y )
+    return fn
 
+def chunker_b(size):
+    def fn(config,inq,outq):
+        buf = b""
+        while 1:
+            x = inq.get()
+            buf += x
+            while len(buf) > size:
+                outq.put(buf[:size])
+                buf = buf[size:]
+    return fn
+
+def convert(outtype):
+    def fn(config,inq,outq):
+        while 1:
+            x = inq.get()
+            y = numpy.frombuffer(x, outtype)
+            outq.put(y)
+    return fn
 
 class dattr(dict):
     """
@@ -238,15 +299,24 @@ def modular_client(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=defa
     #if a function does get slower than realtime, can I make two in its place writing to the same queues?
     #   as long as i have enough cores still, that seems reasonable - but I'll have to think about it
 
-    tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, udp_send]
-    rx_chain = [udp_recv, m17parse, payload2codec2, codec2dec, spkr_audio]
-    # tx_chain = [] #uncomment to disable respective chains
-    # rx_chain = []
+    tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, udp_send((host,port))]
+    rx_chain = [udp_recv(17000), m17parse, payload2codec2, teefile("rxlog.m17"), codec2dec, spkr_audio]
+
+    echolink_bridge_in = [udp_recv(55501), chunker_b(640), convert("<h"), integer_decimate(2), codec2enc, m17frame, tobytes, udp_send((host,port)) ]
+    echolink_bridge_monitor = [udp_recv(55501), chunker_b(640), convert("<h"), integer_decimate(2), codec2enc, m17frame, tobytes,
+            m17parse,payload2codec2, codec2dec, 
+            spkr_audio]
+    echolink_bridge_out = [mic_audio, codec2enc, m17frame, tobytes, 
+            m17parse, payload2codec2, codec2dec, 
+            integer_interpolate(2),
+            udp_send(("localhost",55500)) ]
+
     test_chain = [
             mic_audio, 
             codec2enc, #.02ms of audio per q element at c2.3200 in this part of chain
-            delay(5/.02), #to delay for 5s, divide 5s by the time-length of a q element in this part of chain (which does change)
+            # delay(5/.02), #to delay for 5s, divide 5s by the time-length of a q element in this part of chain (which does change)
             # tee("delayed c2bytes: "),
+            # teefile("out.m17"),
             # vox, 
             # ptt,
             # m17frame, #.04ms of audio per q element at c2.3200
@@ -259,9 +329,15 @@ def modular_client(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=defa
             # null,
             spkr_audio
             ]
-    test_chain = [] #uncomment to disable test_chain
     modules = {
-            "chains":[tx_chain, rx_chain, test_chain],
+            "chains":[
+                # tx_chain, 
+                # rx_chain, 
+                # test_chain, 
+                # echolink_bridge_monitor, 
+                echolink_bridge_in, 
+                echolink_bridge_out
+                ],
             "queues":[],
             "processes":[],
             }
@@ -274,15 +350,6 @@ def modular_client(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=defa
             },
         "ptt":{
             "poll":check_ptt,
-            },
-        "networking":{
-            "server":host,
-            "port":port,
-            },
-        "udp_pcm_rcv":{
-            #i just realized i can do this a little better, only thing i really need to change for udp pcm in and out is the config section
-            },
-        "udp_pcm_snd":{
             },
         "vox":{
             "silence_threshold":10, #that's measured in queue packets
@@ -343,3 +410,8 @@ def modular_client(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=defa
 
 if __name__ == "__main__":
     modular_client(*sys.argv[1:])
+
+"""
+https://www.cloudcity.io/blog/2019/02/27/things-i-wish-they-told-me-about-multiprocessing-in-python/
+
+"""

@@ -3,6 +3,32 @@
 #include <stdint.h>
 #include <string.h>
 #include <arpa/inet.h>
+
+uint64_t encode_callsign_base40(const char *callsign) {
+	//straight from the spec, unedited and unchecked
+	uint64_t encoded = 0;
+	for (const char *p = (callsign + strlen(callsign) - 1); p >= callsign; p-- ) {
+		encoded *= 40;
+		// If speed is more important than code space, you can replace this with a lookup into a 256 byte array.
+		if (*p >= 'A' && *p <= 'Z')  // 1-26
+			encoded += *p - 'A' + 1;
+		else if (*p >= '0' && *p <= '9')  // 27-36
+			encoded += *p - '0' + 27;
+		else if (*p == '-')  // 37
+			encoded += 37;
+		// These are just place holders. If other characters make more sense, change these.
+		// Be sure to change them in the decode array below too.
+		else if (*p == '/')  // 38
+			encoded += 38;
+		else if (*p == '.')  // 39
+			encoded += 39;
+		else
+			// Invalid character, represented by 0.
+			//encoded += 0;
+			;
+	}
+	return encoded;
+}
 /*
 240b: Full LICH without sync:
         48b  Address dst
