@@ -14,46 +14,47 @@ from .address import Address
 from .frames import ipFrame
 from .framer import M17_IPFramer
 from .const import *
-from .misc import example_bytes,_x
+from .misc import example_bytes,_x,chunk
 
 
-def networking_recv(aprecv_q):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("0.0.0.0", self.server[1]))
-    # sock.setblocking(False)
-    self.sock = sock
-    while 1:
-        try:
-            #catch up if we get a burst
-            x, conn = sock.recvfrom( encoded_buf_size ) 
-            # print(conn)
-            # print("Got: ",_x(x))
-            f = ipFrame.from_bytes(x)
-            aprecv_q.put(f.payload)
-        except BlockingIOError as e:
-            #nothing to read
-            print(e)
-            pass
-        except Exception as e:
-            raise(e)
-            print(e)
 
-def codec2setup(mode):
-    c2 = pycodec2.Codec2( mode )
-    conrate = c2.samples_per_frame()
-    bitframe = c2.bits_per_frame()
-    return [c2,conrate,bitframe]
 
-def ptt(config, inq, outq):
+def null(config, inq, outq):
     while 1:
         x = inq.get()
-        if config.ptt():
+
+def tee(header):
+    def fn(config, inq, outq):
+        while 1:
+            x = inq.get()
+            if type(x) == type(b""):
+                print(header, _x(x))
+            else:
+                print(header, x)
+            outq.put(x)
+    return fn
+
+def delay(size):
+    def fn(config, inq, outq):
+        fifo = []
+        while 1:
+            x = inq.get()
+            fifo.insert(0,x)
+            if len(fifo) > size:
+                outq.put(fifo.pop())
+    return fn
+
+def ptt(config, inq, outq):
+    """
+    """
+    while 1:
+        x = inq.get()
+        if config.ptt.poll(): #this will check for every single packet 
             outq.put(x)
 
 def vox(config,inq,outq):
     last = None
     repeat_count = 0
-    config['vox_silence_threshold'] = 10
     while 1:
         x = inq.get()
         if x == last:
@@ -61,73 +62,156 @@ def vox(config,inq,outq):
         else:
             repeat_count = 0
         last = x
-        if repeat_count > config.vox_silence_threshold:
+        if repeat_count > config.vox.silence_threshold:
             continue
         outq.put(x)
+
 
 def mic_audio(config,inq,outq):
     import soundcard as sc
     default_mic = sc.default_microphone()
-    print(default_mic)
-    with default_mic.recorder(samplerate=8000, channels=1, blocksize=config.conrate) as mic:
+    # print(default_mic)
+    conrate = config.codec2.conrate
+    with default_mic.recorder(samplerate=8000, channels=1, blocksize=conrate) as mic:
         while 1:
-            audio = mic.record(numframes=config.conrate)
+            audio = mic.record(numframes=conrate)
+            #we get "interleaved" floats out of here, in a numpy column ([[][][]])(hence the flatten even though it's a single audio channel)
+            audio = audio.flatten() * 32767 #scales from -1,1 to signed 16bit int values
+            #rest of the system works in little endian shorts, so we scale it up and convert the type
+            audio = audio.astype("<h") 
             outq.put(audio)
 
-def codec2enc(config,inq,outq):
-    silence_count = 0
-    last = None
+def spkr_audio(config,inq,outq):
+    import soundcard as sc
+    default_speaker = sc.default_speaker()
+    # print(default_speaker)
+    def silence():
+        sp.play(numpy.zeros(config.codec2.conrate))
+
+    with default_speaker.player(samplerate=8000, channels=1) as sp:
+        buf = [] #allow for playing chunks of audio even when computer is slow
+        buflen = 0 #0 is dont use
+        while 1:
+            #if we stop receiving audio because someone stops transmitting, 
+            #we wont get anything off the queue, so we can't block (hence nowait)
+            try: 
+                audio = inq.get_nowait()
+                #rest of system works in LE signed shorts but soundcard expects floats in and out
+                #so convert it back to a float, and scale it back down to an appropriate range (-1,1)
+                audio = audio.astype("float")
+                audio = audio / 32767
+                if buflen:
+                    if len(buf) < buflen:
+                        buf.append(audio)
+                        silence()
+                    else:
+                        for b in buf:
+                            sp.play(b)
+                        buf = []
+                sp.play(audio)
+            except:
+                #and if we have no data, just play zeros
+                silence()
+
+
+def tobytes(config,inq,outq):
     while 1:
-        audio = inq.get()
-        audio = audio.flatten() * 32767
-        audio = audio.astype("<h") 
-        c2bits = config.c2.encode(audio)
-
-        # assert len(c2bits) == config.bitframe/8
-        outq.put(c2bits)
-
+        outq.put(bytes(inq.get()))
 
 
 def m17frame(config,inq,outq):
-    you = Address(callsign="SP5WWP")
-    me = Address(callsign="W2FBI")
-    print(you)
-    print(me)
+    dst = Address(callsign=config.m17.dst)
+    src = Address(callsign=config.m17.src)
+    print(dst)
+    print(src)
     framer = M17_IPFramer(
-            dst=you,
-            src=me,
-            ftype=5, nonce=b"\xbe\xef"*8 )
-    print("m17frame ready")
+            dst=dst,
+            src=src,
+            ftype=5, #TODO need to set this based on codec2 settings too to support c2.1600
+            nonce=b"\xbe\xef\xf0\x0d"*4 )
     while 1:
-        d = inq.get() + inq.get() 
-        #need 16 bytes for M17 payload, each element on q should be 8 bytes
+        plen = 16 #TODO grab from the framer itself
+        #need 16 bytes for M17 payload, each element on q should be 8 bytes if c2.3200
+        #this will fail in funny ways if our c2 payloads dont fit exactly on byte boundaries
+        d = inq.get()
+        while len(d) < plen:
+            d += inq.get()
         #TODO generalize to support other Codec2 sizes, and grab data until enough is here to send
         #TODO payload_stream needs to return packets and any unused data from the buffer to support that functionality
         pkts = framer.payload_stream(d)
         for pkt in pkts:
             outq.put(pkt)
 
-def tobytes(config,inq,outq):
-    print("tobytes ready")
+def m17parse(config,inq,outq):
     while 1:
-        outq.put(bytes(inq.get()))
+        f = ipFrame.from_bytes(inq.get())
+        # print(f)
+        outq.put(f)
 
-def networking_send(config,inq,outq):
+
+def payload2codec2(config,inq,outq):
+    byteframe = int(config.codec2.bitframe/8) #TODO another place where we assume codec2 frames are byte-sized
+    while 1:
+        x = inq.get()
+        for x in chunk(x.payload, byteframe):
+            assert len(x) == byteframe
+            outq.put(x) 
+
+def codec2setup(mode):
+    c2 = pycodec2.Codec2( mode )
+    conrate = c2.samples_per_frame()
+    bitframe = c2.bits_per_frame()
+    return [c2,conrate,bitframe]
+
+def codec2enc(config,inq,outq):
+    while 1:
+        audio = inq.get()
+        c2bits = config.codec2.c2.encode(audio)
+        assert len(c2bits) == config.codec2.bitframe/8
+        outq.put(c2bits)
+
+def codec2dec(config,inq,outq):
+    while 1:
+        c2bits = inq.get()
+        audio = config.codec2.c2.decode(c2bits)
+        outq.put(audio)
+
+def udp_send(config,inq,outq):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setblocking(False)
-    print("networking send ready")
+
     now = time.time()
     deadline = .02
+
+    c = config.networking
     while 1:
         bs = inq.get()
-        print(_x(bs))
-        sock.sendto( bs, (config.server,config.port) )
+        sock.sendto( bs, (c.server,c.port) )
+
+def udp_recv(config,inq,outq):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("0.0.0.0", config.networking.port))
+    # sock.setblocking(False)
+    while 1:
+        x, conn = sock.recvfrom( encoded_buf_size ) 
+        #but what do I do with conn data, anything?
+        print(_x(x))
+        outq.put(x)
+
 
 
 class dattr(dict):
+    """
+    "dict-attr", used for when you don't want to type [""] all the time
+    (and i think it looks nicer for things like config settings)
+    """
     def __getattr__(self,name):
-        return self[name]
-
+        if type(self[name]) == type({}): 
+            #make sure we wrap any nested dicts when we return them
+            return dattr(self[name])
+        else:
+            #otherwise just make our key,value pairs accessible through . (e.g. x.name)
+            return self[name]
 
 def check_ptt():
     if int(time.time()/2) % 2 == 0:
@@ -135,26 +219,80 @@ def check_ptt():
     else:
         return False
 
-def modular_client(host="localhost",port=55533):
-    #modules need to be cleaned up on exit
+def modular_client(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=default_port):
+    mode=int(mode)
+    port=int(default_port)
+    #about time to make this cleaner, eh? but what parts do i like and dislike about this?
+    #if i get too carried away, i'll end up reimplementing something gnuradio, poorly
     #
-    tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, networking_send]
-    # rx_chain = [networking_recv, toframes, getpayload, codec2dec, spkr]
-    rx_chain = []
+
+    #a chain is a series of small functions that share a queue between each pair
+    #each small function is its own process - which is absurd, except this
+    #is a testing and development environment, so ease of implementation/modification
+    #and modularity is the goal
+    #this also means we can meet our latency constraint for writing out
+    #to the speakers without any effort, even though our total latency
+    #from mic->udp is greater than our deadline. 
+    #As long as each function stays under the deadline individually, all we do is add latency from sampled->delivered
+    #   (well, as long as we have enough processor cores, but it's current_year, these functions still arent that heavy, and its working excellently given what I needed it to do
+    #if a function does get slower than realtime, can I make two in its place writing to the same queues?
+    #   as long as i have enough cores still, that seems reasonable - but I'll have to think about it
+
+    tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, udp_send]
+    rx_chain = [udp_recv, m17parse, payload2codec2, codec2dec, spkr_audio]
+    # tx_chain = [] #uncomment to disable respective chains
+    # rx_chain = []
+    test_chain = [
+            mic_audio, 
+            codec2enc, #.02ms of audio per q element at c2.3200 in this part of chain
+            delay(5/.02), #to delay for 5s, divide 5s by the time-length of a q element in this part of chain (which does change)
+            # tee("delayed c2bytes: "),
+            # vox, 
+            # ptt,
+            # m17frame, #.04ms of audio per q element at c2.3200
+            # tobytes, 
+            # udp_send, 
+            # udp_recv, 
+            # m17parse, 
+            # payload2codec2, #back to .02ms per q el
+            codec2dec, 
+            # null,
+            spkr_audio
+            ]
+    test_chain = [] #uncomment to disable test_chain
     modules = {
-            "_setup":[tx_chain, rx_chain]
+            "chains":[tx_chain, rx_chain, test_chain],
+            "queues":[],
+            "processes":[],
             }
-    c2,conrate,bitframe = codec2setup(3200)
+    c2,conrate,bitframe = codec2setup(mode)
     print("conrate, bitframe = [%d,%d]"%(conrate,bitframe) )
     config = dattr({
+        "m17":{
+            "dst":dst,
+            "src":src,
+            },
+        "ptt":{
+            "poll":check_ptt,
+            },
+        "networking":{
             "server":host,
             "port":port,
+            },
+        "udp_pcm_rcv":{
+            #i just realized i can do this a little better, only thing i really need to change for udp pcm in and out is the config section
+            },
+        "udp_pcm_snd":{
+            },
+        "vox":{
+            "silence_threshold":10, #that's measured in queue packets
+            },
+        "codec2":{
             "c2":c2,
             "conrate":conrate,
             "bitframe":bitframe,
-            "queues":[],
-            "ptt":check_ptt
-            })
+            },
+        })
     """
     queues:
     n -> n2 -> n3 -> n4
@@ -168,148 +306,40 @@ def modular_client(host="localhost",port=55533):
         unless at end of chain, create an outq for each fn, outq=
 
     """
-    for chainidx,chain in enumerate(modules["_setup"]):
+    for chainidx,chain in enumerate(modules["chains"]):
         inq = None
         for fnidx,fn in enumerate(chain):
-            print(fn.__name__)
+            name = fn.__name__
             if fnidx != len(chain):
                 outq = multiprocessing.Queue()
+                modules["queues"].append(outq)
             else:
                 outq = None
-            process = multiprocessing.Process(target=fn, args=(config, inq, outq))
-            modules[fn.__name__] = {
+            process = multiprocessing.Process(name="chain_%d/fn_%d/%s"%(chainidx,fnidx,name), target=fn, args=(config, inq, outq))
+            modules["processes"].append({
+                    "name":name,
                     "inq":inq,
                     "outq":outq,
                     "process":process
-                    }
+                    })
             process.start()
             inq = outq
-
-
-
-
-class Client:
-    def __init__(self, mode, host, port=default_port, udp=False):
-        self.loopback_test = 0
-
-        self.server = (host,port)
-        print("sending to: ",self.server)
-
-        mic_q = multiprocessing.Queue()
-        spkr_q = multiprocessing.Queue()
-        apsend_q = multiprocessing.Queue()
-        aprecv_q = multiprocessing.Queue()
-
-        [conrate, bitframe] = self.setup_audio_processor(mode)
-
-        self.audio_settings = self.setup_audio(mic_q, spkr_q, conrate)
-        self.start_audio()
-
-        self.networking = multiprocessing.Process(target=self.udp_networker, args=(apsend_q, aprecv_q))
-        self.networking.start()
-
-        self.audio_processor_out = multiprocessing.Process(target=self.audio_processor_worker_in, args=(aprecv_q, spkr_q) )
-        self.audio_processor_out.start()
-        self.audio_processor_in = multiprocessing.Process(target=self.audio_processor_worker_out, args=(mic_q, apsend_q) )
-        self.audio_processor_in.start()
-
-        self.qs = {
-                "mic": mic_q,
-                "spkr": spkr_q,
-                "send": apsend_q,
-                "recv": aprecv_q
-                }
-
-
-    def stop_audio(self):
-        self.soundcard.stop()
-
-    def start_audio(self):
-        self.soundcard.start()
-
-    
-    def audio_processor_worker_in(self, aprecv_q, spkr_q):
-        c2 = self.c2
-        buf = b''
-        bitframe = c2.bits_per_frame()
-        byteframe = bitframe/8
-        intbyteframe = int(byteframe)
-        # print(bitframe, intbyteframe, byteframe)
-        assert byteframe == intbyteframe
+    try:
+        procs = modules['processes']
         while 1:
-            buf += aprecv_q.get()
-            c2_bits, buf = buf[0:intbyteframe], buf[intbyteframe:]
-            if len(c2_bits) != byteframe:
-                buf = c2_bits + buf
-                print("c2 decode buffer underrun")
-                continue
-            wav = c2.decode( c2_bits )
-            wav.reshape( (len(wav), 1)) 
-            spkr_q.put( wav )
+            if any(not p['process'].is_alive() for p in procs):
+                print("lost a client process")
+                break
+            time.sleep(.05)
+    except KeyboardInterrupt as e:
+        print("Got ^C, ")
+    finally:
+        print("closing down")
+        for proc in procs:
+            #messy
+            #TODO make a rwlock for indicating shutdown
+            proc["process"].terminate()
 
-    def audio_processor_worker_out(self, mic_q, apsend_q):
-        c2 = self.c2
-        while 1:
-            in_data = mic_q.get()
-            c2_bits = c2.encode( in_data.flatten() )
-            apsend_q.put(c2_bits)
-
-
-
-
-    def tcp_networker(self, apsend_q, aprecv_q):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        def connect():
-            print("connecting...")
-            try:
-                sock.connect( self.server )
-                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                print("connected")
-            except ConnectionRefusedError as e:
-                time.sleep(.5)
-                return connect()
-        connect()
-
-        sock.setblocking(False)
-        self.sock = sock
-        while 1:
-            # print("networker loop")
-            if self.loopback_test == 2:
-                aprecv_q.put( apsend_q.get() )
-                continue
-            try:
-                d = apsend_q.get()
-                sock.send( d )
-                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1) #I don't know if this is here for a reason, change it next time doing TCP
-            except BrokenPipeError as e:
-                print(e)
-                connect()
-            except ConnectionResetError as e:
-                print(e)
-                connect()
-            except Exception as e:
-                print(e)
-                connect()
-            # print("recv:")
-            try:
-                x = sock.recv(8)
-                # print("Got: ",binascii.hexlify(x, b' ', -2))
-                aprecv_q.put(x)
-            except:
-                pass
-
-    def loop_forever(self):
-        while 1:
-            print("Q sizes")
-            for k,v in self.qs.items():
-                print(k, v.qsize())
-            time.sleep(5)
-
-
-
-def client(mode, host, port=default_port, proto="udp"):
-    x = Client(mode=int(mode), host=host, port=int(port), udp=proto=="udp")
-    x.loop_forever()
 
 if __name__ == "__main__":
-    client(*sys.argv[1:])
+    modular_client(*sys.argv[1:])

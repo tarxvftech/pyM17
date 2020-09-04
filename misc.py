@@ -14,6 +14,7 @@ _b8 = __b(8)
 _b16 = __b(16)
 _b = _b8
 _x = lambda b: binascii.hexlify(b, " ", -4)
+
 def example_bytes(length):
     return bytearray(random.getrandbits(8) for _ in range(length))
 
@@ -22,7 +23,7 @@ def demonstrate_chunk():
     print(chunk(ab, 5))
     print(chunk(ab, -5))
 
-def chunk(b:bytes, size:int, fromright=False):
+def chunk(b:bytes, size:int):
     """
     if size is positive, chunks starting left to right
     if size is negative, chunk from the right instead
@@ -35,6 +36,7 @@ def chunk(b:bytes, size:int, fromright=False):
     if fromright:
         return [ b[::-1][i:i+size][::-1] for i in range(0, len(b), size)][::-1]
         #I'm not sorry
+        #okay, maybe a little bit.
     else:
         return [ b[i:i+size] for i in range(0, len(b), size)]
 

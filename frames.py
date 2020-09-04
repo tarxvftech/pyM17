@@ -2,7 +2,7 @@
 import bitstruct
 from .address import Address
 from .const import *
-from .misc import *
+from .misc import _x, chunk
 
 class initialLICH:
     """
@@ -179,8 +179,7 @@ class ipFrame(regularFrame):
             raise(Exception("ipFrames need a full LICH passed"))
 
     def __str__(self):
-        return "M17[%d]: %s"%(self.frame_number,_x(self.payload))
-        return "LICH: " + self.src.callsign + " =[%d]> "%(self.ftype) + self.dst.callsign
+        return "LICH: " + self.LICH.src.callsign + " =[%d]> "%(self.LICH.ftype) + self.LICH.dst.callsign + "\nM17[%d]: %s"%(self.frame_number,_x(self.payload))
 
     def __bytes__(self):
         b=b""
