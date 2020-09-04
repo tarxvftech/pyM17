@@ -36,7 +36,7 @@ class initialLICH:
             self.src = src
             self.dst = dst
             self.ftype = ftype
-            self.nonce = nonce if nonce else b"\x00"*16
+            self.nonce = nonce 
 
     def __str__(self):
         return "LICH: " + self.src.callsign + " =[%d]> "%(self.ftype) + self.dst.callsign

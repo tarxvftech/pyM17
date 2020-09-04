@@ -160,7 +160,7 @@ def m17frame(config,inq,outq):
 def m17parse(config,inq,outq):
     while 1:
         f = ipFrame.from_bytes(inq.get())
-        # print(f)
+        print(f)
         outq.put(f)
 
 
@@ -231,15 +231,19 @@ def integer_interpolate(i):
     uh oh. I'm poorly reimplementing gnuradio blocks, thats a bad sign
     """
     def fn(config,inq,outq):
+        import samplerate
+        resampler = samplerate.Resampler('sinc_best', channels=1)
         while 1:
             x = inq.get()
-            y,x1 = scipy.signal.resample(x, len(x)*2, range(len(x)))
-            print(x)
-            print(y)
+            # print(type(x[0]), x[0],x[1])
+            y = resampler.process(x, i )
+            # print(type(y[0]), y[0],y[1])
+            z = numpy.array(y, dtype="<h")
+            # print(type(z[0]), z[0],z[1])
+            # print(y[0],y[1],y[2])
             # print( len(y),len(x)*i)
             # assert len(y) == len(x)*i
-
-            outq.put( y )
+            outq.put( z )
     return fn
 
 def chunker_b(size):
@@ -300,16 +304,34 @@ def modular_client(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=defa
     #   as long as i have enough cores still, that seems reasonable - but I'll have to think about it
 
     tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, udp_send((host,port))]
-    rx_chain = [udp_recv(17000), m17parse, payload2codec2, teefile("rxlog.m17"), codec2dec, spkr_audio]
+    rx_chain = [udp_recv(17000), tee("rx"), m17parse, payload2codec2, codec2dec, spkr_audio]
 
     echolink_bridge_in = [udp_recv(55501), chunker_b(640), convert("<h"), integer_decimate(2), codec2enc, m17frame, tobytes, udp_send((host,port)) ]
-    echolink_bridge_monitor = [udp_recv(55501), chunker_b(640), convert("<h"), integer_decimate(2), codec2enc, m17frame, tobytes,
-            m17parse,payload2codec2, codec2dec, 
-            spkr_audio]
-    echolink_bridge_out = [mic_audio, codec2enc, m17frame, tobytes, 
+    echolink_bridge_monitor = [
+                udp_recv(55501), 
+                chunker_b(640), 
+                convert("<h"), 
+                integer_decimate(2), 
+                codec2enc, 
+                tee("RX"),
+                m17frame, tobytes,
+                m17parse,payload2codec2, 
+                tee("RX"),
+                codec2dec, 
+                spkr_audio
+                ]
+    echolink_bridge_out = [
+            mic_audio, codec2enc, vox, m17frame, tobytes, 
             m17parse, payload2codec2, codec2dec, 
             integer_interpolate(2),
-            udp_send(("localhost",55500)) ]
+            udp_send(("pidp8i",55500)) 
+            ]
+    m17_to_echolink = [
+            udp_recv(17000), tee("rx"), 
+            m17parse, payload2codec2, codec2dec, 
+            integer_interpolate(2),
+            udp_send(("pidp8i",55500)) 
+            ]
 
     test_chain = [
             mic_audio, 
@@ -331,12 +353,13 @@ def modular_client(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=defa
             ]
     modules = {
             "chains":[
-                # tx_chain, 
+                tx_chain, 
                 # rx_chain, 
                 # test_chain, 
                 # echolink_bridge_monitor, 
-                echolink_bridge_in, 
-                echolink_bridge_out
+                # echolink_bridge_in, 
+                # echolink_bridge_out
+                # m17_to_echolink
                 ],
             "queues":[],
             "processes":[],
