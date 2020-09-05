@@ -25,6 +25,10 @@ class Address:
                 return compareto.upper() == self.callsign
         elif type(compareto) == type(1):
             return compareto == self.addr
+        elif type(compareto) == type(self):
+            return int(self) == int(compareto)
+        else:
+            return False
 
     @staticmethod
     def to_dmr_id(something):

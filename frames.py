@@ -1,56 +1,66 @@
 
 import bitstruct
-from .address import Address
-from .const import *
-from .misc import _x, chunk
+import unittest
+try:
+    from .address import Address
+    from .const import *
+    from .misc import _x, chunk, example_bytes
+except:
+    from address import Address
+    from const import *
+    from misc import _x, chunk, example_bytes
 
 class initialLICH:
     """
-    16b  SYNC 0x3243 
-    
     parts that get replicated in regularFrames:
         48b  Address dst
         48b  Address src
-        16b  int(M17_Frametype)
+        16b  int(M17_streamtype)
         128b nonce (for encryption)
-
-    [4b  tail (for convenc)]
     """
-    sz = int((16+48+48+16+128)/8)
-    sz_wo_sync = int((48+48+16+128)/8)
+    sz = int((48+48+16+128)/8)
     def __init__(self, 
             framer=None, 
 
             src:Address=None, 
             dst:Address=None,
-            ftype=None,
+            streamtype=None,
             nonce=None):
 
         if framer:
             self.framer = framer
             self.src = framer.src
             self.dst = framer.dst
-            self.ftype = framer.ftype
+            self.streamtype = framer.streamtype
             self.nonce = framer.nonce
         else:
             self.src = src
             self.dst = dst
-            self.ftype = ftype
+            self.streamtype = streamtype
             self.nonce = nonce 
 
+    def __eq__(self, other):
+        return bytes(self) == bytes(other)
+        # for name in ["src","dst","streamtype","nonce"]:
+            # x = getattr(self,name)
+            # y = getattr(other,name)
+            # z = x == y
+            # print(z,x,y) 
+
+
     def __str__(self):
-        return "LICH: " + self.src.callsign + " =[%d]> "%(self.ftype) + self.dst.callsign
+        return "LICH: " + self.src.callsign + " =[%d]> "%(self.streamtype) + self.dst.callsign
 
     def __bytes__(self):
-        b = SYNC
+        b = b""
         b += bitstruct.pack("u48",self.dst.addr)
         b += bitstruct.pack("u48",self.src.addr)
-        b += bitstruct.pack("u16",self.ftype)
+        b += bitstruct.pack("u16",self.streamtype)
         b += self.nonce
         return b
 
     def chunks(self):
-        me = bytes(self)[2:] #skip the SYNC for making chunks to be replicated 
+        me = bytes(self)
         return chunk( me, 6)
 
     @staticmethod
@@ -60,13 +70,8 @@ class initialLICH:
 
     @staticmethod
     def dict_from_bytes(data:bytes):
-        """
-        expects to have SYNC already stripped
-        """
         d = {}
-        # assert data[0:2] == SYNC
-        # data = data[2:]
-        d["dst"], d["src"], d["ftype"] = bitstruct.unpack("u48u48u16", data[:14])
+        d["dst"], d["src"], d["streamtype"] = bitstruct.unpack("u48u48u16", data[:14])
         d["dst"] = Address(addr=d["dst"])
         d["src"] = Address(addr=d["src"])
         d["nonce"] = data[14:14+16]
@@ -101,15 +106,12 @@ class initialLICH:
 
 class regularFrame:
     """
-    16b  SYNC 0x3243 (not counted in size)
     48b  LICH chunk
     16b  Frame number counter
     128b payload
     16b  CRC-16 chksum
-
-    4b   tail (convenc) (not implemented here)
     """
-    sz = int((16+48+16+128)/8)
+    sz = int((48+16+128)/8)
     lich_chunk_sz = int(48/8);
     payload_sz = int(128/8)
     def __init__(self, frame_number, payload, LICH:initialLICH=None, lich_chunk:bytes=None):
@@ -122,12 +124,14 @@ class regularFrame:
         self.payload = payload
         if self.LICH:
             self.LICH_chunks = self.LICH.chunks()
+    def __eq__(self, other):
+        return bytes(self) == bytes(other)
 
     def __str__(self):
         return "M17[%d]: %s"%(self.frame_number,_x(self.payload))
 
     def __bytes__(self):
-        b=SYNC
+        b=b""
         if self.LICH:
             lich_chunk_idx = self.frame_number % 5; 
             assert len(self.LICH_chunks[lich_chunk_idx]) == 48/8
@@ -147,12 +151,7 @@ class regularFrame:
 
     @staticmethod
     def dict_from_bytes(data:bytes):
-        """
-        Expects to have had SYNC 16b already stripped
-        """
         d = {}
-        # assert data[0:2] == SYNC
-        # data = data[2:]
         d["lich_chunk"] = data[0:6]
         d["frame_number"]= bitstruct.unpack("u16", data[6:8])[0]
         d["payload"] = data[8:8+16]
@@ -162,38 +161,48 @@ class regularFrame:
 
 class ipFrame(regularFrame):
     """
-    240b/30B: Full LICH without sync: 
+    32b "M17 " 
+    16b  StreamID
+    240b/30B: Full LICH 
         48b  Address dst
         48b  Address src
         16b  int(M17_Frametype)
-        128b nonce (for encryption)
+        128b nonce
     16b  Frame number counter
     128b payload
     16b  CRC-16 chksum
-    total: 400 b, 50 B
     """
-    sz = int(initialLICH.sz_wo_sync + (16+128+16)/8)
+    sz = 4+2+initialLICH.sz+2+16+2
     def __init__(self, *args, **kwargs):
+        self.streamid = kwargs.pop('streamid',0x0)
         super().__init__(*args,**kwargs)
         if not self.LICH:
             raise(Exception("ipFrames need a full LICH passed"))
 
     def __str__(self):
-        return "LICH: " + self.LICH.src.callsign + " =[%d]> "%(self.LICH.ftype) + self.LICH.dst.callsign + "\nM17[%d]: %s"%(self.frame_number,_x(self.payload))
+        return "SID: %04x\n LICH: "%(self.streamid) + self.LICH.src.callsign + " =[%d]> "%(self.LICH.streamtype) + self.LICH.dst.callsign + "\nM17[%d]: %s"%(self.frame_number,_x(self.payload))
 
     def __bytes__(self):
         b=b""
-        b += bytes(self.LICH)[2:] #2: to strip the SYNC
+        b += b"M17 "
+        b += bitstruct.pack("u16", self.streamid)
+        b += bytes(self.LICH)
         b += bitstruct.pack("u16", self.frame_number)
         b += bytes(self.payload)
         b += bytes([0]*2) #crc16, TODO
-        assert self.sz == 50 == len(b)
+        assert self.sz == len(b)
         return b
 
     @staticmethod
+    def is_m17(data:bytes):
+        return data[0:4] == b"M17 "
+
+    @staticmethod
     def dict_from_bytes(data:bytes):
+        assert ipFrame.is_m17(data)
         d = {}
-        lich_end = initialLICH.sz_wo_sync
+        d["streamid"]= bitstruct.unpack("u16", data[4:6])[0]
+        lich_end = 6+initialLICH.sz
         d["LICH"] = initialLICH.from_bytes(data[0:lich_end])
         payload_start = lich_end+2
         d["frame_number"]= bitstruct.unpack("u16", data[lich_end:payload_start])[0]
@@ -206,7 +215,7 @@ def is_LICH( b:bytes ):
     No real way to tell other than size with the implementation in this file
     in RF, they would be the same size
     """
-    return len(b) in [initialLICH.sz, initialLICH.sz_wo_sync]
+    return len(b) == initialLICH.sz
 
 class M17_Frametype(int):
 
@@ -232,3 +241,46 @@ class M17_Frametype(int):
             (2, "enc_subtype"),
             (7, "reserved"),
             ]
+
+class test_frame_encodings(unittest.TestCase):
+    def test_lich(self):
+        lich = initialLICH(
+                src=Address(callsign="W2FBI"),
+                dst=Address(callsign="SP5WWP"),
+                streamtype=5,
+                nonce=bytes(example_bytes(16)),
+                )
+        bl = bytes(lich)
+        lich2 = initialLICH.from_bytes(bl)
+        assert lich == lich2
+    def test_regular_frame(self):
+        lich = initialLICH(
+                src=Address(callsign="W2FBI"),
+                dst=Address(callsign="SP5WWP"),
+                streamtype=5,
+                nonce=example_bytes(16),
+                )
+        x = regularFrame(
+                LICH=lich,
+                frame_number=1,
+                payload=example_bytes(16)
+                );
+        y = bytes(x)
+        z = regularFrame.from_bytes(y)
+        assert z == x
+
+    def test_ip_frame(self):
+        lich = initialLICH(
+                src=Address(callsign="W2FBI"),
+                dst=Address(callsign="SP5WWP"),
+                streamtype=5,
+                nonce=example_bytes(16),
+                )
+        x = ipFrame(
+                streamid=0xf00d,
+                LICH=lich,
+                frame_number=1,
+                payload=example_bytes(16)
+                );
+        y = bytes(x)
+        z = ipFrame.from_bytes(y)

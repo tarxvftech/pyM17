@@ -220,10 +220,20 @@ int main(int argc, char **argv){
  * output from git aa28914f1813be97878df0fecf1c0a1d59964187
 0x41 == nonce
 0x42 == payload
-           destination         source       type (16 bits)
-        _________________ _________________ _____
-0x0000  00 00 00 c4 cc 5e 00 00 01 61 ae 1f 00 05 41 41
-0x0010  41 41 41 41 41 41 41 41 41 41 41 41 41 41 00 0d <- frame number, uin16
-0x0020  42 42 42 42 42 42 42 42 42 42 42 42 42 42 42 42
-0x0030  ff ff <- CRC16
+0xCC == streamid
+fn is the frame number, where the high bit (leftmost) indicates last packet in the stream
+
+           "M17 "    SID     destination      source (continued next line)
+        ___________ _____ _________________ ___________
+0x0000  4d 31 37 20 cc cc 00 99 6a 41 93 f8 00 00 01 61
+
+        _src_ type_ _____0x41 == nonce_________________
+0x0010  ae 1f 00 05 41 41 41 41 41 41 41 41 41 41 41 41
+
+        __nonce____ _fn__ ______payload________________  fn is the frame number
+0x0020  41 41 41 41 00 0d 42 42 42 42 42 42 42 42 42 42
+
+        __more payload___ CRC16
+0x0030  42 42 42 42 42 42 ff ff
+
 */
