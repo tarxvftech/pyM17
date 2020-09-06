@@ -12,7 +12,7 @@ steps:
   - name: dockersock
     path: /var/run/docker.sock
 - name: test
-  image: python
+  image: pym17_builder
   commands:
   - pip install --upgrade pip numpy Cython wheel setuptools
   - pip install -r requirements_debian_10.txt
