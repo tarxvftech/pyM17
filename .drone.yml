@@ -4,15 +4,15 @@ kind: pipeline
 type: docker
 
 steps:
-- name: build
-  image: docker
-  commands:
-  - docker build . -t pym17_builder
-  volumes:
-  - /var/run/docker.sock:/var/run/docker.sock
 - name: test
   image: python
   commands:
   - pip install --upgrade pip numpy Cython wheel setuptools
   - pip install -r requirements_debian_10.txt
   - python -m unittest discover -v
+#- name: build
+  #image: docker
+  #commands:
+  #- docker build . -t pym17_builder
+  #volumes:
+  #- /var/run/docker.sock:/var/run/docker.sock
