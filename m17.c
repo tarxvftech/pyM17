@@ -210,7 +210,7 @@ void callsign_tests(){
 	printf("%d errors\n", errors);
 }
 int main(int argc, char **argv){
-	/*callsign_tests();*/
+	callsign_tests();
 	explain_frame();
 
 	return 0;
