@@ -1,2 +1,3 @@
 from archlinux
-RUN pacman --noconfirm -Sy base-devel codec2 python python-pip python-setuptools
+RUN pacman --noconfirm -Syyu base-devel 
+RUN pacman --noconfirm -S codec2 python python-pip python-setuptools
