@@ -7,7 +7,7 @@ steps:
 - name: test
   image: python
   commands:
-  - apt-get install codec2
+  - apt-get update && apt-get install -y libcodec2-dev libcodec2 codec2
   - pip install numpy Cython
   - pip install .
   - python -m unittest discover -v
