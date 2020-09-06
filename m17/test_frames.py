@@ -15,7 +15,7 @@ class test_frame_encodings(unittest.TestCase):
                 src=Address(callsign="W2FBI"),
                 dst=Address(callsign="SP5WWP"),
                 streamtype=5,
-                nonce=bytes(example_bytes(16)),
+                nonce=bytes(example_bytes(14)),
                 )
         bl = bytes(lich)
         lich2 = initialLICH.from_bytes(bl)
@@ -25,7 +25,7 @@ class test_frame_encodings(unittest.TestCase):
                 src=Address(callsign="W2FBI"),
                 dst=Address(callsign="SP5WWP"),
                 streamtype=5,
-                nonce=example_bytes(16),
+                nonce=example_bytes(14),
                 )
         x = regularFrame(
                 LICH=lich,
@@ -41,7 +41,7 @@ class test_frame_encodings(unittest.TestCase):
                 src=Address(callsign="W2FBI"),
                 dst=Address(callsign="SP5WWP"),
                 streamtype=5,
-                nonce=example_bytes(16),
+                nonce=example_bytes(14),
                 )
         x = ipFrame(
                 streamid=0xf00d,
@@ -51,3 +51,4 @@ class test_frame_encodings(unittest.TestCase):
                 );
         y = bytes(x)
         z = ipFrame.from_bytes(y)
+        assert z == x

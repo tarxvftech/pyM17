@@ -143,7 +143,7 @@ def m17frame(config,inq,outq):
             dst=dst,
             src=src,
             streamtype=5, #TODO need to set this based on codec2 settings too to support c2.1600
-            nonce=b"\xbe\xef\xf0\x0d"*4 )
+            nonce=b"\xbe\xef\xf0\x0d" + b"a"*10 ) 
     while 1:
         plen = 16 #TODO grab from the framer itself
         #need 16 bytes for M17 payload, each element on q should be 8 bytes if c2.3200

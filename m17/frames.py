@@ -37,6 +37,7 @@ class initialLICH:
             self.dst = dst
             self.streamtype = streamtype
             self.nonce = nonce 
+        assert len(nonce) == 14
 
     def __eq__(self, other):
         return bytes(self) == bytes(other)
@@ -73,7 +74,7 @@ class initialLICH:
         d["dst"], d["src"], d["streamtype"] = bitstruct.unpack("u48u48u16", data[:14])
         d["dst"] = Address(addr=d["dst"])
         d["src"] = Address(addr=d["src"])
-        d["nonce"] = data[14:14+16]
+        d["nonce"] = data[14:14+14]
         return d
 
     @staticmethod
