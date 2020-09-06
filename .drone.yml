@@ -5,7 +5,7 @@ type: docker
 
 steps:
 - name: test
-  image: python3
+  image: python
   commands:
   - pip install .
   - python -m unittest discover -v
