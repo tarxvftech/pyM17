@@ -6,6 +6,11 @@ type: docker
 steps:
 - name: build
   image: plugins/docker
+  trigger:
+    event:
+    - cron
+    cron:
+    - weekly
   settings:
     repo: registry2.tarxvf.tech/mike/pym17_builder
     registry: registry2.tarxvf.tech

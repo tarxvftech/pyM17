@@ -1,5 +1,9 @@
 # Python package for M17 radio and radio-over-IP protocols
 
+
+[![Build Status](https://drone.mmcginty.me/api/badges/mike/pyM17/status.svg?ref=refs/heads/master)](https://drone.mmcginty.me/mike/pyM17)
+
+
 Full python support for handling M17 addresses, framing and parsing,
 and including a full Python native VoIP client.
 
