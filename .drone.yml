@@ -13,7 +13,6 @@ steps:
     password: 
       from_secret: registry2_password
     #target: build
-
 - name: test
   pull: always
   image: registry2.tarxvf.tech/mike/pym17_builder
@@ -21,7 +20,3 @@ steps:
   - pip install --upgrade pip numpy Cython wheel setuptools
   - pip install -r requirements_debian_10.txt
   - python -m unittest discover -v
-
-
-image_pull_secrets:
-- dockerconfigjson
