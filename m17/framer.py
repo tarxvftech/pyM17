@@ -7,7 +7,7 @@ except:
 
 
 class M17_RFFramer:
-    def __init__(self, src:Address, dst:Address, streamtype, nonce=None ):
+    def __init__(self, *args, **kwargs):
         self.src = src
         self.dst = dst
         self.streamtype = streamtype

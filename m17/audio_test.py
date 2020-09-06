@@ -2,7 +2,6 @@ import sys
 import time
 import numpy
 import pycodec2
-import soundcard
 
 def audio_test_soundcard(mode):
     import soundcard as sc
@@ -34,4 +33,4 @@ def audio_test_soundcard(mode):
             sp.play(audio)
 
 if __name__ == "__main__":
-    audio_test_soundcard(sys.argv[1])
+    audio_test_soundcard(int(sys.argv[1]))

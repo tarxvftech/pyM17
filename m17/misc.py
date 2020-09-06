@@ -1,3 +1,5 @@
+import os
+import sys
 import random
 import binascii
 
@@ -46,3 +48,29 @@ def test_b(x):
     print(_b8(int(x)))
     print(_b16(int(x)))
 
+def c_array_init_file(filename):
+    with open(filename,"rb") as fd:
+        c_array_init(fd.read())
+
+def c_array_init(bs:bytes):
+    print("uint8_t sample_stream[]={")
+    line = ""
+    cnt = 0
+    tcount = 0
+    for b in bs:
+        line += hex(b) 
+        line +=","
+        cnt += 1
+        tcnt += 1
+        if cnt == 4:
+            line+="\t"
+        if cnt >= 8:
+            print(line)
+            line = ""
+            cnt = 0
+            continue
+    print("}")
+    #cat filename |grep -o 'x' |wc -l to know how big it is
+
+if __name__ == "__main__":
+    vars()[sys.argv[1]](sys.argv[2:])
