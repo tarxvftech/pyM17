@@ -8,9 +8,17 @@ steps:
   image: docker
   commands:
   - docker build . -t pym17_builder
+  volumes:
+  - name: dockersock
+    path: /var/run/docker.sock
 - name: test
   image: python
   commands:
   - pip install --upgrade pip numpy Cython wheel setuptools
   - pip install -r requirements_debian_10.txt
   - python -m unittest discover -v
+
+volumes:
+- name: dockersock
+  host:
+    path: /var/run/docker.sock
