@@ -4,7 +4,7 @@ kind: pipeline
 type: docker
 
 steps:
-- name: test
+- name: build
   image: docker
   commands:
   - docker build . -t pym17_builder

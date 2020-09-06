@@ -7,10 +7,10 @@ except:
 
 
 class M17_RFFramer:
-    def __init__(self, src:Address, dst:Address, ftype, nonce=None ):
+    def __init__(self, src:Address, dst:Address, streamtype, nonce=None ):
         self.src = src
         self.dst = dst
-        self.ftype = ftype
+        self.streamtype = streamtype
         self.nonce = nonce if nonce else b"\x00"*16
         self.packet_count = 0
         assert len(self.makeLICH()) == initialLICH.sz

@@ -15,9 +15,9 @@ class initialLICH:
         48b  Address dst
         48b  Address src
         16b  int(M17_streamtype)
-        128b nonce (for encryption)
+        112b nonce (for encryption)
     """
-    sz = int((48+48+16+128)/8)
+    sz = int((48+48+16+112)/8)
     def __init__(self, 
             framer=None, 
 
@@ -162,11 +162,7 @@ class ipFrame(regularFrame):
     """
     32b "M17 " 
     16b  StreamID
-    240b/30B: Full LICH 
-        48b  Address dst
-        48b  Address src
-        16b  int(M17_Frametype)
-        128b nonce
+    ?    Full LICH bytes
     16b  Frame number counter
     128b payload
     16b  CRC-16 chksum
@@ -201,12 +197,14 @@ class ipFrame(regularFrame):
         assert ipFrame.is_m17(data)
         d = {}
         d["streamid"]= bitstruct.unpack("u16", data[4:6])[0]
-        lich_end = 6+initialLICH.sz
-        d["LICH"] = initialLICH.from_bytes(data[0:lich_end])
+        lich_start = 6
+        lich_end = lich_start+initialLICH.sz
         payload_start = lich_end+2
+        payload_end = payload_start+16
+        d["LICH"] = initialLICH.from_bytes(data[lich_start:lich_end])
         d["frame_number"]= bitstruct.unpack("u16", data[lich_end:payload_start])[0]
-        d["payload"] = data[payload_start:payload_start+16]
-        # d["chksum"] = bitstruct.unpack("u16", ...
+        d["payload"] = data[payload_start:payload_end]
+        # d["crc"] = bitstruct.unpack("u16", ...
         return d
 
 def is_LICH( b:bytes ):

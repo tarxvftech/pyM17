@@ -142,7 +142,7 @@ def m17frame(config,inq,outq):
     framer = M17_IPFramer(
             dst=dst,
             src=src,
-            ftype=5, #TODO need to set this based on codec2 settings too to support c2.1600
+            streamtype=5, #TODO need to set this based on codec2 settings too to support c2.1600
             nonce=b"\xbe\xef\xf0\x0d"*4 )
     while 1:
         plen = 16 #TODO grab from the framer itself
@@ -304,7 +304,7 @@ def modular_client(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=defa
     #   as long as i have enough cores still, that seems reasonable - but I'll have to think about it
 
     tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, udp_send((host,port))]
-    rx_chain = [udp_recv(17000), tee("rx"), m17parse, payload2codec2, codec2dec, spkr_audio]
+    rx_chain = [udp_recv(17000), tee("rx"), m17parse, payload2codec2, codec2dec, teefile("m17.raw"), spkr_audio]
 
     echolink_bridge_in = [udp_recv(55501), chunker_b(640), convert("<h"), integer_decimate(2), codec2enc, m17frame, tobytes, udp_send((host,port)) ]
     echolink_bridge_monitor = [
@@ -353,8 +353,8 @@ def modular_client(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=defa
             ]
     modules = {
             "chains":[
-                tx_chain, 
-                # rx_chain, 
+                # tx_chain, 
+                rx_chain, 
                 # test_chain, 
                 # echolink_bridge_monitor, 
                 # echolink_bridge_in, 
