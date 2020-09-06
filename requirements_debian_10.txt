@@ -1,0 +1,9 @@
+bitstruct==8.11.0
+cffi==1.14.2
+Cython==0.29.21
+numpy==1.19.1
+pycodec2==1.0.3
+pycparser==2.20
+samplerate==0.1.0
+scipy==1.5.2
+SoundCard==0.4.0

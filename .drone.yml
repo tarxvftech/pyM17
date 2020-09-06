@@ -8,7 +8,5 @@ steps:
   image: python
   commands:
   - apt-get update && apt-get install -y libcodec2-dev 
-  - pip install numpy Cython wheel setuptools
-  #- pip install -r requirements.txt.gitpycodec2
-  - pip install .
+  - pip install -r requirements_debian_10.txt
   - python -m unittest discover -v
