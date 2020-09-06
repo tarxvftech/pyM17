@@ -9,3 +9,8 @@ It uses the Codec2 vocoder by David Rowe.
 Use this Python (Py3 only) package to implement or integrate M17 systems,
 or if you need more performance or embedded support, please check out
 [libm17](https://git.mmcginty.me/mike/libm17).
+
+
+# Installation
+`pip install .`
+[Different purposes of setup.py and requirements.txt](https://stackoverflow.com/a/33685899)

@@ -1,0 +1,11 @@
+---
+name: default
+kind: pipeline
+type: docker
+
+steps:
+- name: test
+  image: python3
+  commands:
+  - pip install .
+  - python -m unittest discover -v

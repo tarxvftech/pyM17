@@ -7,6 +7,37 @@ callsign_alphabet = "\x00" + string.ascii_uppercase + string.digits + "-/."
 
 
 class Address:
+    """
+    Call with either "addr" or "callsign" to instantiate, e.g.
+
+    >>> from m17.address import Address
+    >>> Address(callsign="W2FBI").addr
+    23178783
+
+    >>> from m17.address import Address
+    >>> Address(addr=23178783).callsign
+    'W2FBI'
+
+    You can also use it directly, e.g.
+    >>> from m17.address import Address
+    >>> Address.encode("W2FBI")
+    23178783
+    >>> Address.decode(23178783)
+    'W2FBI'
+
+    Equality tests work:
+    >>> Address(callsign="W2FBI") == "W2FBI"
+    True
+    >>> Address(callsign="W2FBI") == 23178783
+    True
+    >>> Address(callsign="W2FBI") == Address.encode("W2FBI")
+    True
+    >>> Address(callsign="W2FBI") == Address(addr=23178783)
+    True
+
+
+
+    """
     def __init__(self, **kwargs):
         for k,v in kwargs.items():
             if k in ["addr","callsign"]:

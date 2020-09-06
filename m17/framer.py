@@ -1,6 +1,10 @@
+try:
+    from .address import Address
+    from .frames import *
+except:
+    from address import Address
+    from frames import *
 
-from .address import Address
-from .frames import *
 
 class M17_RFFramer:
     def __init__(self, src:Address, dst:Address, ftype, nonce=None ):
