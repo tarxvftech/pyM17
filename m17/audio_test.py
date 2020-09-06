@@ -34,4 +34,4 @@ def audio_test_soundcard(mode):
             sp.play(audio)
 
 if __name__ == "__main__":
-    vars()[sys.argv[1]](*sys.argv[2:])
+    audio_test_soundcard(sys.argv[1])
