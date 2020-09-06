@@ -10,4 +10,5 @@ steps:
   - apt-get update && apt-get install -y libcodec2-dev 
   - pip install numpy Cython
   - pip install .
+  - pip install -r requirements.txt.gitpycodec2
   - python -m unittest discover -v
