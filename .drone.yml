@@ -7,7 +7,7 @@ steps:
 - name: build
   image: plugins/docker
   settings:
-    repo: mike/pym17_builder
+    repo: registry2.tarxvf.tech/mike/pym17_builder
     registry: registry2.tarxvf.tech
     username: mike
     password: 
