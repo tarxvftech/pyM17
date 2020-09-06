@@ -17,9 +17,12 @@ with open("requirements.txt","r") as fd:
 
 long_description = DESCRIPTION
 
+
+#look into sourcing VERSION from git tag
+#what's this __version__ thing I'm seeing?
 setup(
     name=NAME,
-    version=about['__version__'],
+    version=VERSION,
     description=DESCRIPTION,
     long_description=long_description,
     long_description_content_type='text/markdown',
@@ -29,7 +32,6 @@ setup(
     url=URL,
     # py_modules=['mypackage'],
     install_requires=REQUIRED,
-    extras_require=EXTRAS,
     include_package_data=True,
     classifiers=[
         # Trove classifiers
