@@ -1,7 +1,8 @@
 Cython
 numpy
 scipy
-pycodec2
 soundcard
 bitstruct
 samplerate
+pycodec2
+
