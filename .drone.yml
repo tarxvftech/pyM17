@@ -8,8 +8,6 @@ steps:
   image: docker
   commands:
   - docker build . -t pym17_builder
-  volumes:
-  - /var/run/docker.sock:/var/run/docker.sock
 - name: test
   image: python
   commands:
