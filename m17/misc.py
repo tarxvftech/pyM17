@@ -56,12 +56,10 @@ def c_array_init(bs:bytes):
     print("uint8_t sample_stream[]={")
     line = ""
     cnt = 0
-    tcount = 0
     for b in bs:
         line += hex(b) 
         line +=","
         cnt += 1
-        tcnt += 1
         if cnt == 4:
             line+="\t"
         if cnt >= 8:
@@ -73,4 +71,4 @@ def c_array_init(bs:bytes):
     #cat filename |grep -o 'x' |wc -l to know how big it is
 
 if __name__ == "__main__":
-    vars()[sys.argv[1]](sys.argv[2:])
+    vars()[sys.argv[1]](*sys.argv[2:])

@@ -8,16 +8,11 @@ except:
 
 class M17_RFFramer:
     def __init__(self, *args, **kwargs):
-        self.src = src
-        self.dst = dst
-        self.streamtype = streamtype
-        self.nonce = nonce if nonce else b"\x00"*16
         self.packet_count = 0
-        assert len(self.makeLICH()) == initialLICH.sz
-        self.LICH = initialLICH(framer=self)
+        self.LICH = initialLICH(*args,**kwargs)
 
     def makeLICH(self):
-        return bytes(initialLICH(framer=self))
+        return bytes(self.LICH)
 
     @classmethod
     def fromLICH(cls,data:bytes):

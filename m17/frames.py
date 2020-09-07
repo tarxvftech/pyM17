@@ -19,24 +19,15 @@ class initialLICH:
     """
     sz = int((48+48+16+112)/8)
     def __init__(self, 
-            framer=None, 
-
             src:Address=None, 
             dst:Address=None,
             streamtype=None,
             nonce=None):
 
-        if framer:
-            self.framer = framer
-            self.src = framer.src
-            self.dst = framer.dst
-            self.streamtype = framer.streamtype
-            self.nonce = framer.nonce
-        else:
-            self.src = src
-            self.dst = dst
-            self.streamtype = streamtype
-            self.nonce = nonce 
+        self.src = src
+        self.dst = dst
+        self.streamtype = streamtype
+        self.nonce = nonce 
         assert len(nonce) == 14
 
     def __eq__(self, other):

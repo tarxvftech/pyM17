@@ -4,8 +4,8 @@ from setuptools import setup
 
 #for reference: https://github.com/navdeep-G/setup.py/blob/master/setup.py
 #
-NAME = 'M17'
-DESCRIPTION = 'M17 radio (and radio-over-IP) protocol implementation'
+NAME = 'm17'
+DESCRIPTION = 'M17 radio (and radio-over-IP) protocol implementation. https://github.com/M17-project/'
 URL = 'https://git.mmcginty.me/mike/pym17'
 EMAIL = 'pyM17@tarxvf.tech'
 AUTHOR = 'tarxvf'
@@ -46,7 +46,6 @@ setuptools.setup(
         # Full list: https://pypi.python.org/pypi?%3Aaction=list_classifiers
         'Programming Language :: Python',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: Implementation :: CPython',
     ]
     )
 
