@@ -18,7 +18,9 @@ from .framer import M17_IPFramer
 from .const import *
 from .misc import example_bytes,_x,chunk
 
-
+"""
+M17 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+"""
 
 
 def null(config, inq, outq):
@@ -191,26 +193,43 @@ def codec2dec(config,inq,outq):
         audio = config.codec2.c2.decode(c2bits)
         outq.put(audio)
 
-def udp_send(sendto):
+def udp_send(connarg):
     """
-    sendto is the standard host,port) tuple like ("localhost",17000)
+    connarg is the standard host,port) tuple like ("localhost",17000)
     """
     def fn(config,inq,outq):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         sock.setblocking(False)
+        setonce = 0
         while 1:
             bs = inq.get()
-            sock.sendto( bs, sendto )
+            # print(_x(bs))
+            conn = (config.reply_host.value, config.reply_port.value)
+            if not setonce and conn[0] != "":
+                sock.bind(("0.0.0.0", 17000))
+                print(conn)
+                setonce = 1
+            if setonce:
+                sock.sendto( bs, conn )
     return fn
 
 def udp_recv(port):
     def fn(config,inq,outq):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
         sock.bind(("0.0.0.0", port))
         # sock.setblocking(False)
+        lastconn = None
         while 1:
             x, conn = sock.recvfrom( encoded_buf_size ) 
-            #but what do I do with conn data, anything?
+            if conn != lastconn:
+                lastconn = conn
+                print("New connection from ", lastconn)
+                config.reply_host.value = conn[0].encode("utf-8")
+                config.reply_port.value = conn[1]
             # print(_x(x))
             outq.put(x)
     return fn
@@ -284,6 +303,7 @@ def check_ptt():
     else:
         return False
 
+
 def modular_client(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=default_port):
     mode=int(mode)
     port=int(default_port)
@@ -302,9 +322,8 @@ def modular_client(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=defa
     #   (well, as long as we have enough processor cores, but it's current_year, these functions still arent that heavy, and its working excellently given what I needed it to do
     #if a function does get slower than realtime, can I make two in its place writing to the same queues?
     #   as long as i have enough cores still, that seems reasonable - but I'll have to think about it
-
     tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, udp_send((host,port))]
-    rx_chain = [udp_recv(17000), tee("rx"), m17parse, payload2codec2, codec2dec, teefile("m17.raw"), spkr_audio]
+    rx_chain = [udp_recv(17000), m17parse, tee("RX"), payload2codec2, codec2dec, spkr_audio]
 
     echolink_bridge_in = [udp_recv(55501), chunker_b(640), convert("<h"), integer_decimate(2), codec2enc, m17frame, tobytes, udp_send((host,port)) ]
     echolink_bridge_monitor = [
@@ -353,7 +372,7 @@ def modular_client(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=defa
             ]
     modules = {
             "chains":[
-                # tx_chain, 
+                tx_chain, 
                 rx_chain, 
                 # test_chain, 
                 # echolink_bridge_monitor, 
@@ -366,6 +385,7 @@ def modular_client(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=defa
             }
     c2,conrate,bitframe = codec2setup(mode)
     print("conrate, bitframe = [%d,%d]"%(conrate,bitframe) )
+    manager = multiprocessing.Manager()
     config = dattr({
         "m17":{
             "dst":dst,
@@ -382,6 +402,9 @@ def modular_client(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=defa
             "conrate":conrate,
             "bitframe":bitframe,
             },
+        "reply_host":manager.Value("c_wchar_p",""),
+        "reply_port":manager.Value('i',port)
+
         })
     """
     queues:
