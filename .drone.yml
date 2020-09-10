@@ -47,7 +47,9 @@ steps:
   image: registry2.tarxvf.tech/mike/pym17_builder
   commands:
   - pip install m17
-  - python -m m17.sanity_check
+  #- python -m m17.sanity_check ; /bin/true
+  - pip install m17[Codec2]
+  #- python -m m17.sanity_check
   when:
     branch:
       include:
