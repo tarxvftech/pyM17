@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import setuptools
 from setuptools import setup
+from os import path
 
 #for reference: https://github.com/navdeep-G/setup.py/blob/master/setup.py
 #
@@ -10,20 +11,17 @@ URL = 'https://git.mmcginty.me/mike/pym17'
 EMAIL = 'pyM17@tarxvf.tech'
 AUTHOR = 'tarxvf'
 REQUIRES_PYTHON = '>=3.8.0'
-VERSION = '0.0.1'
+VERSION = '0.0.2'
 
 REQUIRED=[
-        "Cython",
-        "numpy",
-        "scipy",
-        "soundcard",
         "bitstruct",
-        "samplerate",
-        "pycodec2"
+        "wheel"
         ]
 
+this_directory = path.abspath(path.dirname(__file__))
+with open(path.join(this_directory, 'README.md'), encoding='utf-8') as f:
+    long_description = f.read()
 
-long_description = DESCRIPTION
 
 
 #look into sourcing VERSION from git tag
@@ -41,6 +39,15 @@ setuptools.setup(
     install_requires=REQUIRED,
     packages=setuptools.find_packages(),
     include_package_data=True,
+    extras_require={
+        "Codec2":[
+            "Cython",
+            "numpy",
+            "soundcard",
+            "samplerate",
+            "pycodec2"
+            ]
+        },
     classifiers=[
         # Trove classifiers
         # Full list: https://pypi.python.org/pypi?%3Aaction=list_classifiers

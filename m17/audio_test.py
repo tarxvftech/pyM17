@@ -1,7 +1,11 @@
 import sys
 import time
-import numpy
-import pycodec2
+
+try:
+    import pycodec2
+    import numpy
+except:
+    raise(Exception("Need to install with [Codec2]"))
 
 def audio_test_soundcard(mode):
     import soundcard as sc

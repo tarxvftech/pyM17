@@ -2,14 +2,9 @@
 import sys
 import time
 import queue
-import numpy
 import socket
 import binascii
-import pycodec2
-import threading
 import multiprocessing
-import scipy 
-import scipy.signal
 
 from .const import default_port
 from .address import Address
@@ -18,7 +13,11 @@ from .framer import M17_IPFramer
 from .const import *
 from .misc import example_bytes,_x,chunk
 
-
+try:
+    import pycodec2
+    import numpy
+except:
+    raise(Exception("Need to install with [Codec2]"))
 
 
 def null(config, inq, outq):
