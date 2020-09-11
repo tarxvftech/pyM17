@@ -3,11 +3,16 @@
 M17 is a new, experimental radio protocol similar to DMR/MotoTRBO, P25, D-STAR, and others.
 It uses the Codec2 vocoder by David Rowe. 
 
+See [M17 Project](https://m17project.org/) for more details.
+
+This code will be pushed up to [the M17 project's newly created Github](https://github.com/m17-project) eventually.
+As for now, it's all by yours truly.
+
 [![Build Status](https://drone.mmcginty.me/api/badges/mike/pyM17/status.svg?ref=refs/heads/master)](https://drone.mmcginty.me/mike/pyM17)
 
 
-This package has full python support for handling M17 addresses, framing and parsing,
-and including a full Python native VoIP client.
+This package has full Python support for handling M17 addresses, framing and parsing,
+and including a full Python native VoIP client (for developers). 
 
 ## Features
 

@@ -215,9 +215,6 @@ def udp_recv(port):
     return fn
 
 def integer_decimate(i):
-    """
-    uh oh. I'm poorly reimplementing gnuradio blocks, thats a bad sign
-    """
     def fn(config,inq,outq):
         while 1:
             x = inq.get()
@@ -227,21 +224,15 @@ def integer_decimate(i):
 
 def integer_interpolate(i):
     """
-    uh oh. I'm poorly reimplementing gnuradio blocks, thats a bad sign
+    starting to look uncomfortably like gnuradio, innit?
     """
     def fn(config,inq,outq):
         import samplerate
         resampler = samplerate.Resampler('sinc_best', channels=1)
         while 1:
             x = inq.get()
-            # print(type(x[0]), x[0],x[1])
             y = resampler.process(x, i )
-            # print(type(y[0]), y[0],y[1])
             z = numpy.array(y, dtype="<h")
-            # print(type(z[0]), z[0],z[1])
-            # print(y[0],y[1],y[2])
-            # print( len(y),len(x)*i)
-            # assert len(y) == len(x)*i
             outq.put( z )
     return fn
 
@@ -284,11 +275,8 @@ def check_ptt():
         return False
 
 def modular_client(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=default_port):
-    mode=int(mode)
-    port=int(default_port)
-    #about time to make this cleaner, eh? but what parts do i like and dislike about this?
-    #if i get too carried away, i'll end up reimplementing something gnuradio, poorly
-    #
+    mode=int(mode) #so we can call modular_client straight from command line
+    port=int(port)
 
     #a chain is a series of small functions that share a queue between each pair
     #each small function is its own process - which is absurd, except this
@@ -434,6 +422,7 @@ if __name__ == "__main__":
     modular_client(*sys.argv[1:])
 
 """
+Good links I found:
 https://www.cloudcity.io/blog/2019/02/27/things-i-wish-they-told-me-about-multiprocessing-in-python/
 
 """
