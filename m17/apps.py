@@ -54,6 +54,7 @@ def voip(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=default_port, 
 
     config.m17.dst = dst
     config.m17.src = src
+    print(config)
 
     modular(config, [tx_chain, rx_chain])
 
@@ -88,9 +89,6 @@ def _echolink_bridge():
             ]
     config = default_config(mode)
     modular(config, [tx_chain, rx_chain])
-
-
-
 
 def m17_to_echolink(port=default_port, echolink_host="pidp8i",echolink_audio_in_port=55500):
     """

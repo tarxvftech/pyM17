@@ -1,10 +1,49 @@
 import sys
 import string
-callsign_alphabet = "\x00" + string.ascii_uppercase + string.digits + "-/." 
+import unittest
+from .misc import _x
+callsign_alphabet = " " + string.ascii_uppercase + string.digits + "-/." 
 #"." is TBD
 # print("Alphabet: %s"%(callsign_alphabet))
 # print("len(Alphabet): %d"%(len(callsign_alphabet)))
 
+
+class test_address(unittest.TestCase):
+    def setUp(self):
+        self.me = Address(callsign="W2FBI")
+        self.ref = Address(callsign="XLX307 D")
+
+    # def test_invalidchar(self):
+        ##gotta think about this one - is 'W2FBI' really == 'W2FBI ' for our purposes?
+        ##I think yes, but sitting on it for now
+        # self.assertEqual(self.me, "W2FBI  ")
+        # self.assertEqual(self.me, "W2FBI ")
+        # self.assertEqual(self.me, "W2FBI?")
+
+    def test_string_compare(self):
+        self.assertEqual(self.me, "W2FBI")
+    def test_num_compare(self):
+        self.assertEqual(self.me, 23178783)
+    def test_compare(self):
+        me2 = Address(addr=23178783)
+        self.assertEqual(self.me, me2)
+    def test_not_equal(self):
+        me2 = Address(addr=23178784)
+        self.assertNotEqual(self.me,me2)
+
+
+    ##API needs to be implemented
+    # def test_dmrconversion(self):
+        # me2 = Address(callsign="D3125250")
+        # self.assertEqual(self.me,me2)
+    ##Needs more thought, and an explicit method call
+    ## or leave it up to the application to decide
+    # def test_portable_equality(self):
+        # me2 = Address(callsign="W2FBI/P")
+        # self.assertEqual(self.me,me2)
+    # def test_substation_equality(self):
+        # me2 = Address(callsign="W2FBI-1")
+        # self.assertNotEqual(self.me,me2)
 
 class Address:
     """
@@ -13,6 +52,10 @@ class Address:
     >>> from m17.address import Address
     >>> Address(callsign="W2FBI").addr
     23178783
+
+    You can get the hex version using Python's hex()
+    >>> hex( 23178783 )
+    '0x161ae1f'
 
     >>> from m17.address import Address
     >>> Address(addr=23178783).callsign
@@ -25,7 +68,7 @@ class Address:
     >>> Address.decode(23178783)
     'W2FBI'
 
-    Equality tests work:
+    Equality tests work like you might hope:
     >>> Address(callsign="W2FBI") == "W2FBI"
     True
     >>> Address(callsign="W2FBI") == 23178783
@@ -44,10 +87,13 @@ class Address:
                 setattr(self,k,v)
         self.callsign = self.callsign.upper() if hasattr(self,"callsign") else self.decode(self.addr)
         self.addr = self.addr if hasattr(self,"addr") else self.encode(self.callsign)
+
     def __str__(self):
         return "%s == 0x%06x"%(self.callsign,self.addr)
+
     def __index__(self):
         return self.addr
+
     def __eq__(self, compareto):
         if type(compareto) == type(""):
             if compareto.isdigit(): #yeah, gross.

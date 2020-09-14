@@ -8,3 +8,4 @@ def load_tests(loader, tests, ignore):
     tests.addTests(doctest.DocTestSuite(framer))
     tests.addTests(doctest.DocTestSuite(misc))
     return tests
+

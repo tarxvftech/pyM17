@@ -2,6 +2,7 @@ import os
 import sys
 import random
 import binascii
+import unittest
 
 def __b(size):
     def binary_print(num):
@@ -54,12 +55,49 @@ class dattr(dict):
     (and i think it looks nicer for things like config settings)
     """
     def __getattr__(self,name):
+        """
+        With a dattr, you can do this:
+        >>> x = dattr({"abc":True})
+        >>> x.abc
+        True
+
+        """
+        # print("getattr", name)
         if type(self[name]) == type({}): 
-            #make sure we wrap any nested dicts when we return them
-            return dattr(self[name])
-        else:
-            #otherwise just make our key,value pairs accessible through . (e.g. x.name)
-            return self[name]
+            #make sure we wrap any nested dicts when we encounter them
+            self[name] = dattr(self[name]) #has to assign to save any changes to nested dattrs
+            #e.g.  x.abc.fed = "in" 
+        #otherwise just make our key,value pairs accessible through . (e.g. x.name)
+        return self[name]
+    def __setattr__(self,name,value):
+        """
+        With a dattr, you can do this:
+
+        >>> x = dattr({"abc":True})
+        >>> x.abc = False
+        >>> x.abc
+        False
+        """
+        # print("setattr",self, name,value)
+        # print(self)
+        self[name] = value
+        return self[name]
+        # print(self)
+
+
+class test_nested_dattr(unittest.TestCase):
+    def test_get(self):
+        x = dattr({"abc":{
+            "fed":"out"
+            }})
+        self.assertEqual(x.abc.fed, "out")
+
+    def test_set(self):
+        x = dattr({"abc":{
+            "fed":"out"
+            }})
+        x.abc.fed = "in"
+        self.assertEqual(x.abc.fed, "in")
 
 def c_array_init_file(filename):
     with open(filename,"rb") as fd:
