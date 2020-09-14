@@ -11,7 +11,7 @@ from .misc import example_bytes,_x,chunk,dattr
 from .blocks import *
 
 def default_config(c2_mode):
-    c2,conrate,bitframe = codec2setup(mode)
+    c2,conrate,bitframe = codec2setup(c2_mode)
     print("conrate, bitframe = [%d,%d]"%(conrate,bitframe) )
 
     config = dattr({
