@@ -62,7 +62,6 @@ class dattr(dict):
         True
 
         """
-        # print("getattr", name)
         if type(self[name]) == type({}): 
             #make sure we wrap any nested dicts when we encounter them
             self[name] = dattr(self[name]) #has to assign to save any changes to nested dattrs
@@ -78,11 +77,7 @@ class dattr(dict):
         >>> x.abc
         False
         """
-        # print("setattr",self, name,value)
-        # print(self)
         self[name] = value
-        return self[name]
-        # print(self)
 
 
 class test_nested_dattr(unittest.TestCase):
