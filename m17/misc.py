@@ -48,6 +48,19 @@ def test_b(x):
     print(_b8(int(x)))
     print(_b16(int(x)))
 
+class dattr(dict):
+    """
+    "dict-attr", used for when you don't want to type [""] all the time
+    (and i think it looks nicer for things like config settings)
+    """
+    def __getattr__(self,name):
+        if type(self[name]) == type({}): 
+            #make sure we wrap any nested dicts when we return them
+            return dattr(self[name])
+        else:
+            #otherwise just make our key,value pairs accessible through . (e.g. x.name)
+            return self[name]
+
 def c_array_init_file(filename):
     with open(filename,"rb") as fd:
         c_array_init(fd.read())
