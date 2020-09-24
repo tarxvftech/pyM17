@@ -18,7 +18,12 @@ except:
     raise(Exception("Need to install with [Codec2]"))
 
 
-
+def zeros(size, dtype, rate):
+    def fn(config, inq, outq):
+        while 1:
+            outq.put(numpy.zeros(size, dtype))
+            time.sleep(1/rate)
+    return fn
 
 def null(config, inq, outq):
     """

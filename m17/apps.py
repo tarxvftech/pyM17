@@ -30,6 +30,17 @@ def default_config(c2_mode):
         })
     return config
 
+def voipsim(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=default_port):
+    mode=int(mode) #so we can call modular_client straight from command line
+    port=int(port)
+    config = default_config(mode)
+    audio_sim = zeros( size=config.codec2.conrate, dtype="<h", rate=50)
+    tx_chain = [audio_sim, codec2enc, m17frame, tobytes, udp_send((host,port))]
+    config.m17.dst = dst
+    config.m17.src = src
+    print(config)
+    modular(config, [tx_chain])
+
 def voip(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=default_port, voipmode="full"):
     mode=int(mode) #so we can call modular_client straight from command line
     port=int(port)
@@ -92,8 +103,8 @@ def _echolink_bridge():
 
 def m17_to_echolink(port=default_port, echolink_host="pidp8i",echolink_audio_in_port=55500):
     """
-    bridge echolink audio to local speaker and mic - through M17 in both directions
-    really only interesting 
+    decode and bridge m17 packets to echolink
+    (useful for interopability testing)
     """
     m17_to_echolink = [
             udp_recv(port), tee("rx"), 
@@ -206,7 +217,7 @@ def modular(config, chains):
 
 
 if __name__ == "__main__":
-    modular_client(*sys.argv[1:])
+    vars()[sys.argv[1]](*sys.argv[2:])
 
 """
 Good links I found:

@@ -59,3 +59,8 @@ to get a fully working installation of both.
 
 You may email me with clearly described problems regarding installation
 and I will do my best to help.
+
+
+TODO:
+https://github.com/joerick/cibuildwheel
+
