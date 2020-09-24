@@ -11,11 +11,7 @@ from .const import *
 from .misc import example_bytes,_x,chunk,dattr
 from .blocks import *
 
-try:
-    import pycodec2
-    import numpy
-except:
-    raise(Exception("Need to install with [Codec2]"))
+import numpy
 
 
 def zeros(size, dtype, rate):
@@ -250,6 +246,7 @@ def payload2codec2(config,inq,outq):
             outq.put(x) 
 
 def codec2setup(mode):
+    import pycodec2
     c2 = pycodec2.Codec2( mode )
     conrate = c2.samples_per_frame()
     bitframe = c2.bits_per_frame()
