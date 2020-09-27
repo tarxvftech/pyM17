@@ -123,6 +123,8 @@ class Address:
             charidx = callsign_alphabet.index(char)
             num *= 40
             num += charidx
+            if num >= 40**9:
+                raise(Exception("Invalid callsign"))
         return num
     
     @staticmethod
