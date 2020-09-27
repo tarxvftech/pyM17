@@ -1,6 +1,9 @@
 import sys
 import string
 import unittest
+
+import bitstruct
+
 from .misc import _x
 callsign_alphabet = " " + string.ascii_uppercase + string.digits + "-/." 
 #"." is TBD
@@ -12,14 +15,6 @@ class test_address(unittest.TestCase):
     def setUp(self):
         self.me = Address(callsign="W2FBI")
         self.ref = Address(callsign="XLX307 D")
-
-    # def test_invalidchar(self):
-        ##gotta think about this one - is 'W2FBI' really == 'W2FBI ' for our purposes?
-        ##I think yes, but sitting on it for now
-        # self.assertEqual(self.me, "W2FBI  ")
-        # self.assertEqual(self.me, "W2FBI ")
-        # self.assertEqual(self.me, "W2FBI?")
-
     def test_string_compare(self):
         self.assertEqual(self.me, "W2FBI")
     def test_num_compare(self):
@@ -30,20 +25,8 @@ class test_address(unittest.TestCase):
     def test_not_equal(self):
         me2 = Address(addr=23178784)
         self.assertNotEqual(self.me,me2)
-
-
-    ##API needs to be implemented
-    # def test_dmrconversion(self):
-        # me2 = Address(callsign="D3125250")
-        # self.assertEqual(self.me,me2)
-    ##Needs more thought, and an explicit method call
-    ## or leave it up to the application to decide
-    # def test_portable_equality(self):
-        # me2 = Address(callsign="W2FBI/P")
-        # self.assertEqual(self.me,me2)
-    # def test_substation_equality(self):
-        # me2 = Address(callsign="W2FBI-1")
-        # self.assertNotEqual(self.me,me2)
+    def test_bytes(self):
+        self.assertEqual(bytes(self.me), b'\x00\x00\x01a\xae\x1f')
 
 class Address:
     """
@@ -90,6 +73,8 @@ class Address:
 
     def __str__(self):
         return "%s == 0x%06x"%(self.callsign,self.addr)
+    def __bytes__(self):
+        return bitstruct.pack("u48",self.addr)
 
     def __index__(self):
         return self.addr
