@@ -174,19 +174,20 @@ class m17_networking:
         # requires peer1 and peer2 both be connected live to self (e.g. keepalives)
         #sent to opposing peer with other sides host and expected port
         try:
-            _,callsign = self.reg_fetch_by_conn(conn)
+            _,requestor_callsign = self.reg_fetch_by_conn(conn)
+            target_callsign = msg.callsign
             _,theirconn = self.reg_fetch_by_callsign(msg.callsign)
         except KeyError as e:
             logging.error("Missing a registration, didn't find %s"%(e))
             return
-        payload = json.dumps({"msgtype":"introducing", "callsign": callsign, "host": conn[0], "port":conn[1] }).encode("utf-8")
+        payload = json.dumps({"msgtype":"introducing", "callsign": requestor_callsign, "host": conn[0], "port":conn[1] }).encode("utf-8")
         self.M17J_send(payload, theirconn) #this port needs to be from our existing list of connections appropriate to the _callsign_
         #we need to arrange the port too, don't we? 
-        payload = json.dumps({"msgtype":"introducing", "callsign": msg.callsign, "host": theirconn[0], "port":theirconn[1] }).encode("utf-8")
+        payload = json.dumps({"msgtype":"introducing", "callsign": target_callsign, "host": theirconn[0], "port":theirconn[1] }).encode("utf-8")
         self.M17J_send(payload, conn) #this one we can reply to directly, of course
 
     def attempt_rendezvous(self, conn, msg):
-        payload = json.dumps({"msgtype":"hi!", "callsign": msg.callsign}).encode("utf-8")
+        payload = json.dumps({"msgtype":"hi!", "callsign": self.callsign}).encode("utf-8")
         self.M17J_send(payload, (msg.host,msg.port))
 
     def have_link(self, callsign):
