@@ -23,27 +23,38 @@ class m17_networking:
     def __init__(self, callsign, primaries):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind( ("0.0.0.0", 17000) )
+        self.sock.setblocking(False)
         # self.sock.bind( ("::1", 17000) )
 
         self.recvQ = queue.Queue()
-        receiverT = threading.Thread(target=self.recv)
-        receiverT.start()
+        self.sendQ = queue.Queue()
+        network = threading.Thread(target=self.networker, args=(self.recvQ, self.sendQ))
+        network.start()
 
         self.conns = {}
 
         self.whereis = {}
-        self.primaries = []
+        self.primaries = primaries
         self.callsign = callsign
 
         self.last = 0
         self.registration_period = 15
 
-    def recv(self):
+    def networker(self, recvq, sendq):
         """
         """
         while 1:
-            data,conn = self.sock.recvfrom(1500)
-            self.recvQ.put((data,conn))
+            try:
+                data,conn = self.sock.recvfrom(1500)
+                print("RECV",conn)
+                recvq.put((data,conn))
+            except BlockingIOError as e:
+                pass
+            if not sendq.empty():
+                data,conn = sendq.get_nowait()
+                print("SEND",conn)
+                self.sock.sendto(data,conn)
+            time.sleep(.0001)
 
     def loop(self):
         def looper(self):
@@ -57,6 +68,7 @@ class m17_networking:
         self.register_loop_once()
         if not self.recvQ.empty():
             data,conn = self.recvQ.get_nowait()
+            print("Recv:", data,conn)
             if conn[0] not in self.conns:
                 self.conns[ conn[0] ] = dattr({
                     "last": time.time(),
@@ -126,19 +138,21 @@ class m17_networking:
 
     def registration_send(self, payload, conn):
         print("Sending to %s M17R %s"%(conn,payload))
-        self.sock.sendto(b"M17R" + payload, conn)
+        self.sendQ.put((b"M17R" + payload, conn))
     def rendezvous_send(self, payload, conn):
         print("Sending to %s M17M %s"%(conn,payload))
-        self.sock.sendto(b"M17M" + payload, conn)
+        self.sendQ.put((b"M17M" + payload, conn))
 
     def query_primary( self, callsign):
         addr = m17.address.Address.encode(callsign)
         payload = json.dumps({"msgtype":"where is?", "m17_addr": addr }).encode("utf-8")
+        print("query %s %s"%(callsign, payload))
         for primary in self.primaries:
+            print(primary)
             self.registration_send(payload, primary)
 
 
-    def reply( self, packet, callsign, loc ):
+    def registration_reply( self, packet, callsign, loc ):
         addr = m17.address.Address.encode(callsign)
         payload = json.dumps({"msgtype":"is at", "m17_addr": addr, "host":loc }).encode("utf-8")
         self.rendezvous_send(payload, conn)
@@ -167,10 +181,16 @@ if __name__ == "__main__":
     # primaries = [("localhost",17000),("m17.programradios.com.",17000)]
     primaries = [("m17.programradios.com.",17000)]
     x = m17_networking(sys.argv[1], primaries)
+    # start = time.time()
+    # events = 0
     # while 1:
         # x.loop_once()
+        # if time.time() > start + 5 and events < 1:
+            # x.query_primary("W2FBI")
+            # events += 1
+
     x.loop()
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     # time.sleep(5)
     # for each in sys.argv[2:]:
         # x.query_primary(each)
