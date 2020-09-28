@@ -114,8 +114,9 @@ class m17_networking:
             #ignore it, it's just there to poke a hole so we can receive datagrams through it
             print("Got an opening packet from %s!"%(str(conn)))
 
-    def registration_store(self, callsign, host, port):
-        print("[%s]\t[M17 registration] %s -> %s"%(self.host.hostname, callsign, host))
+    def registration_store(self, callsign, conn):
+        host,port = conn
+        print("[M17 registration] %s -> %s"%(callsign, conn))
         self.whereis[ callsign ] = (host,port,time.time())
 
     def query( self, callsign ):
