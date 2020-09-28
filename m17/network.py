@@ -88,6 +88,7 @@ class m17_networking:
 
     def registration_process_packet(self, payload, conn):
         msg = dattr(json.loads(payload.decode("utf-8")))
+        print("registration",msg,conn)
         callsign = m17.address.Address.decode(msg.m17_addr)
         if msg.msgtype == "i am here": #remote host asks to tie their host and callsign together
             self.registration_store(callsign, conn) #so we store it
@@ -103,6 +104,7 @@ class m17_networking:
 
     def rendezvous_process_packet(self, payload, conn):
         msg = dattr(json.loads(payload.decode("utf-8")))
+        print("rendezvous:",msg,conn)
         if msg.msgtype == "introduce me?": #got a request: please introduce me to host, i'm trying to talk to them on port...
             ...
             #make a packet each to introduce peer1 and peer2
