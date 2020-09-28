@@ -189,7 +189,7 @@ class m17_networking:
 
 if __name__ == "__main__":
     primaries = [("m17.programradios.com.",17000)]
-    x = m17_networking(sys.argv[1], primaries)
+    x = m17_networking(callsign=sys.argv[1], port=int(sys.argv[2]), primaries)
     x.loop()
     import pdb; pdb.set_trace()
     #on selection of reflector or remote user:
