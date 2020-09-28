@@ -193,12 +193,15 @@ class m17_networking:
     def have_link(self, callsign):
         try:
             last,conn = self.reg_fetch_by_callsign(callsign)
-            return time.time() - last
+            return time.time() - last #<30
         except KeyError as e:
             return False
 
     def callsign_connect(self, callsign):
         self.request_rendezvous(callsign)
+
+    def callsign_wait_connect(self, callsign):
+        self.callsign_connect(callsign)
         start = time.time()
         while not self.have_link(callsign):
             time.sleep(.003)
@@ -221,9 +224,9 @@ if __name__ == "__main__":
 
     # x.callsign_connect("W2FBI") #this is how you do an automatic udp hole punch. 
     # #Registers the connection and maintains keepalives with that host. They should do the same.
-    # x.have_link("W2FBI") #check we are connected
-    # x.callsign_disco("W2FBI") #this is how you stop the keepalives and kill that connection
+    # x.have_link("W2FBI") #check if we are connected.
+    # x.callsign_disco("W2FBI") #this is how you stop the keepalives and kill that connection (not implemented yet)
+    # callsign_disco implies have_link will return False
 
-    #get results ... how?
-    #hosts behind the same nat can expect failure when doing a direct call to each other
+    #hosts behind the same nat can expect failure when doing a direct call to each other, not exactly sure why - seems to be related to hairpin NATing
 
