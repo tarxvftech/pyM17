@@ -59,8 +59,8 @@ class m17_networking:
             data,conn = self.recvQ.get_nowait()
             if conn[0] not in self.conns:
                 self.conns[ conn[0] ] = dattr({
-                    last: time.time(),
-                    port: conn[1]
+                    "last": time.time(),
+                    "port": conn[1]
                         })
             else:
                 self.conns[ conn[0] ].last = time.time()
