@@ -99,7 +99,6 @@ class m17_networking:
             #voice and data packets
         elif payload.startswith(b"M17J"): #M17 Json development and evaluation protocol - the standard is, there is no standard
             msg = dattr(json.loads(payload[4:].decode("utf-8")))
-            print("registration",msg,conn)
             if msg.msgtype == "i am here": #remote host asks to tie their host and callsign together
                 self.reg_store(msg.callsign, conn) #so we store it
             # elif msg.msgtype == "where is?": #getting a query for a stored callsign
