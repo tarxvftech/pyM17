@@ -21,9 +21,9 @@ import m17.address
 
 
 class m17_networking:
-    def __init__(self, callsign, primaries):
+    def __init__(self, primaries, callsign, port=17000):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.bind( ("0.0.0.0", 17000) )
+        self.sock.bind( ("0.0.0.0", port) )
         self.sock.setblocking(False)
         # self.sock.bind( ("::1", 17000) )
 
@@ -189,7 +189,13 @@ class m17_networking:
 
 if __name__ == "__main__":
     primaries = [("m17.programradios.com.",17000)]
-    x = m17_networking(callsign=sys.argv[1], port=int(sys.argv[2]), primaries)
+    callsign = sys.argv[1]
+    if "-s" in sys.argv[2:]:
+        portnum = 17000
+    else:
+        portnum = (m17.address.Address.encode(callsign) % 32767) + 32767
+    print(portnum)
+    x = m17_networking(primaries, callsign=callsign, port=portnum )
     x.loop()
     import pdb; pdb.set_trace()
     #on selection of reflector or remote user:
