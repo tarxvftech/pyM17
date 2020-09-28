@@ -190,7 +190,7 @@ if __name__ == "__main__":
             # events += 1
 
     x.loop()
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     # time.sleep(5)
     # for each in sys.argv[2:]:
         # x.query_primary(each)
