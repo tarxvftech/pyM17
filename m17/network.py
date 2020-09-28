@@ -69,7 +69,8 @@ class m17_networking:
         self.looper.start()
 
     def clean_conns(self):
-        self.conns = {conn: data for conn, data in self.conns if time.time() - data.last > self.connection_timeout}
+        print(self.conns)
+        # self.conns = {conn: data for conn, data in self.conns if time.time() - data.last > self.connection_timeout}
 
     def loop_once(self):
         self.registration_keepalive()
