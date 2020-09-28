@@ -38,7 +38,8 @@ class m17_networking:
         self.callsign = callsign
 
         self.last = 0
-        self.registration_period = 15
+        self.registration_keepalive_period = 25
+        self.connection_timeout = 25
 
     def networker(self, recvq, sendq):
         """
@@ -64,55 +65,102 @@ class m17_networking:
         self.looper = threading.Thread(target=looper, args=(self,))
         self.looper.start()
 
+    def clean_conns(self):
+        self.conns = {conn: data for conn, data in self.conns if time.time() - data.last > self.connection_timeout}
+
     def loop_once(self):
-        self.register_loop_once()
+        self.registration_keepalive()
         if not self.recvQ.empty():
             data,conn = self.recvQ.get_nowait()
             print("Recv:", data,conn)
             if conn[0] not in self.conns:
-                self.conns[ conn[0] ] = dattr({
+                self.conns[ conn ] = dattr({
                     "last": time.time(),
-                    "port": conn[1]
+                    "conn": conn,
                         })
+                print(self.conns)
             else:
                 self.conns[ conn[0] ].last = time.time()
             self.process_packet( data, conn )
+        self.clean_conns()
 
-    def register_loop_once(self):
-        if not self.callsign:
-            return
-        sincelastrun = time.time() - self.last
-        if sincelastrun > self.registration_period:
-            addr = m17.address.Address.encode(self.callsign)
-            payload = json.dumps({"msgtype":"i am here", "m17_addr": addr }).encode("utf-8")
-            for primary in primaries:
-                self.registration_send(payload, primary)
-            self.last = time.time()
 
     def process_packet(self, payload, conn):
         if payload.startswith(b"M17 "):
             ...
             #voice and data packets
-        if payload.startswith(b"M17M"):
+        elif payload.startswith(b"M17M"):
             self.rendezvous_process_packet(payload[4:], conn)
-        if payload.startswith(b"M17R"):
+        elif payload.startswith(b"M17R"):
             self.registration_process_packet(payload[4:], conn)
+        else:
+            print("payload unrecognized")
+            import pdb; pdb.set_trace()
+
 
     def registration_process_packet(self, payload, conn):
         msg = dattr(json.loads(payload.decode("utf-8")))
         print("registration",msg,conn)
         callsign = m17.address.Address.decode(msg.m17_addr)
         if msg.msgtype == "i am here": #remote host asks to tie their host and callsign together
-            self.registration_store(callsign, conn) #so we store it
+            self.reg_store(callsign, conn) #so we store it
         if msg.msgtype == "where is?": #getting a query for a stored callsign
-            loc,port,lastseen = self.query( callsign )
-            self.registration_reply( conn, callsign, loc)
+            loc,port,lastseen = self.reg_fetch( callsign )
+            self.answer_where_is( conn, callsign, loc)
         if msg.msgtype == "is at": #getting a reply to a query
             print("Found %s at %s!"%(callsign, msg.host))
             # self.store( callsign, packet.srchost)
             ... #and now we continue with what we were trying to do, i s'pose
             # request rendezvous? here isn't where I want it to happen, but lets prove the concept i guess
             self.request_rendezvous(msg.host)
+
+    def registration_keepalive(self):
+        """
+        Periodically re-register
+        """
+        if not self.callsign:
+            return
+        sincelastrun = time.time() - self.last
+        if sincelastrun > self.registration_keepalive_period:
+            addr = m17.address.Address.encode(self.callsign)
+            for primary in primaries:
+                self.register_me_with( primary )
+            self.last = time.time()
+
+    def register_me_with(self, conn):
+        payload = json.dumps({"msgtype":"i am here", "m17_addr": addr }).encode("utf-8")
+        self.M17R_send(payload, primary)
+
+    def reg_store(self, callsign, conn):
+        host,port = conn
+        print("[M17 registration] %s -> %s"%(callsign, conn))
+        self.whereis[ callsign ] = (host,port,time.time())
+
+    def reg_fetch( self, callsign ):
+        return self.whereis[callsign]
+
+    def M17R_send(self, payload, conn):
+        print("Sending to %s M17R %s"%(conn,payload))
+        self.sendQ.put((b"M17R" + payload, conn))
+
+    def ask_where_is( self, callsign, server ):
+        addr = m17.address.Address.encode(callsign)
+        payload = json.dumps({"msgtype":"where is?", "m17_addr": addr }).encode("utf-8")
+        self.M17R_send(payload, server)
+
+    def callsign_lookup( self, callsign):
+        for primary in self.primaries:
+            self.ask_where_is( callsign, primary )
+
+    def answer_where_is( self, conn, callsign, loc ):
+        addr = m17.address.Address.encode(callsign)
+        payload = json.dumps({"msgtype":"is at", "m17_addr": addr, "host":loc }).encode("utf-8")
+        self.rendezvous_send(payload, conn)
+
+
+    def rendezvous_send(self, payload, conn):
+        print("Sending to %s M17M %s"%(conn,payload))
+        self.sendQ.put((b"M17M" + payload, conn))
 
     def rendezvous_process_packet(self, payload, conn):
         msg = dattr(json.loads(payload.decode("utf-8")))
@@ -126,51 +174,21 @@ class m17_networking:
             self.attempt_rendezvous(conn,msg)
         if msg.msgtype == "hi!": #got an "oh hey" packet
             #ignore it, it's just there to poke a hole so we can receive datagrams through it
-            print("Got an opening packet from %s!"%(str(conn)))
-
-    def registration_store(self, callsign, conn):
-        host,port = conn
-        print("[M17 registration] %s -> %s"%(callsign, conn))
-        self.whereis[ callsign ] = (host,port,time.time())
-
-    def query( self, callsign ):
-        return self.whereis[callsign]
-
-    def registration_send(self, payload, conn):
-        print("Sending to %s M17R %s"%(conn,payload))
-        self.sendQ.put((b"M17R" + payload, conn))
-    def rendezvous_send(self, payload, conn):
-        print("Sending to %s M17M %s"%(conn,payload))
-        self.sendQ.put((b"M17M" + payload, conn))
-
-    def query_primary( self, callsign):
-        addr = m17.address.Address.encode(callsign)
-        payload = json.dumps({"msgtype":"where is?", "m17_addr": addr }).encode("utf-8")
-        print("query %s %s"%(callsign, payload))
-        for primary in self.primaries:
-            print(primary)
-            self.registration_send(payload, primary)
-
-
-    def registration_reply( self, conn, callsign, loc ):
-        addr = m17.address.Address.encode(callsign)
-        payload = json.dumps({"msgtype":"is at", "m17_addr": addr, "host":loc }).encode("utf-8")
-        self.rendezvous_send(payload, conn)
-
-
+            print("Got a holepunch packet from %s!"%(str(conn)))
 
     def request_rendezvous(self, dsthost):
         payload = json.dumps({"msgtype":"introduce me?", "addr": dsthost, "port":17000 }).encode("utf-8")
+        #their addr, but my port
         for introducer in self.primaries:
             self.rendezvous_send(payload, introducer)
     
     def arrange_rendezvous(self, conn, msg):
         # requires peer1 and peer2 both be connected live to self (e.g. keepalives)
-        # make packet to send to peer1 with payload initiating connection to peer2 and vice versa
+        #sent to opposing peer with other sides host and expected port
         payload = json.dumps({"msgtype":"introducing", "addr": conn[0], "port":17000 }).encode("utf-8")
-        self.rendezvous_send(payload, (msg.addr,17000)) #we need to arrange the port too, don't we?
+        self.rendezvous_send(payload, (msg.addr,17000)) #we need to arrange the port too, don't we? this one needs to be from our existing list of connections
         payload = json.dumps({"msgtype":"introducing", "addr": msg.addr, "port":17000}).encode("utf-8")
-        self.rendezvous_send(payload, conn)
+        self.rendezvous_send(payload, conn) #this one we can reply to directly, of course
 
     def attempt_rendezvous(self, conn, msg):
         payload = json.dumps({"msgtype":"hi!"}).encode("utf-8")
@@ -178,21 +196,18 @@ class m17_networking:
 
 
 if __name__ == "__main__":
-    # primaries = [("localhost",17000),("m17.programradios.com.",17000)]
     primaries = [("m17.programradios.com.",17000)]
     x = m17_networking(sys.argv[1], primaries)
-    # start = time.time()
-    # events = 0
-    # while 1:
-        # x.loop_once()
-        # if time.time() > start + 5 and events < 1:
-            # x.query_primary("W2FBI")
-            # events += 1
-
     x.loop()
-    import pdb; pdb.set_trace()
-    # time.sleep(5)
-    # for each in sys.argv[2:]:
-        # x.query_primary(each)
-        # time.sleep(1)
-    # time.sleep(30)
+    #on selection of reflector or remote user:
+    x.callsign_lookup("M17REF A") #returns where to find that noun
+    x.callsign_lookup("W2FBI A")
+    x.callsign_lookup("W2FBI")
+    x.callsign_connect("W2FBI") #this is how you do an automatic udp hole punch. 
+    #Registers the connection and maintains keepalives with that host. They should do the same.
+    x.check_link("W2FBI") #check we are connected
+    x.check_link("17.12.15.13") #check 
+    x.callsign_disco("W2FBI") #this is how you stop the keepalives and kill that connection
+
+    #get results ... how?
+
