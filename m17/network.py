@@ -2,11 +2,13 @@ import os
 import sys
 import enum
 import time
+import json
 import struct
 import random
 import logging
 import unittest
 import binascii
+import socket
 
 import queue
 import threading
@@ -15,25 +17,24 @@ import bitstruct
 import m17
 import m17.address
 
-class m17_simapp:
-    def __init__(self, host):
-        super().__init__(host)
+class m17_networking:
+    def __init__(self, callsign, primaries):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind( ("0.0.0.0", 17000) )
-        self.sock.bind( ("::1", 17000) )
+        # self.sock.bind( ("::1", 17000) )
 
         self.recvQ = queue.Queue()
-        receiverT = threading.Thread(target=self.recv, args=(self.recvQ,))
+        receiverT = threading.Thread(target=self.recv)
         receiverT.start()
 
         self.conns = {}
 
         self.whereis = {}
         self.primaries = []
-        self.iam = None
+        self.callsign = callsign
+
         self.last = 0
         self.registration_period = 15
-        self.parent = parent
 
     def recv(self):
         """
@@ -64,13 +65,13 @@ class m17_simapp:
             self.process_packet( data, conn )
 
     def register_loop_once(self):
-        if not self.iam:
+        if not self.callsign:
             return
         sincelastrun = time.time() - self.last
         if sincelastrun > self.registration_period:
-            m17_addr = m17.address.Address.encode(self.iam)
+            addr = m17.address.Address.encode(self.callsign)
             payload = json.dumps({"msgtype":"i am here", "m17_addr": addr }).encode("utf-8")
-            for primary,primaryport in primaries:
+            for primary in primaries:
                 self.registration_send(payload, primary)
             self.last = time.time()
 
@@ -119,14 +120,11 @@ class m17_simapp:
         return self.whereis[callsign]
 
     def registration_send(self, payload, conn):
+        print("Sending to %s M17R %s"%(conn,payload))
         self.sock.sendto(b"M17R" + payload, conn)
-
-    def register(self, callsign, primaries):
-        """
-        actual registration packets are sent from registration loop_once since they serve as keepalives
-        """
-        self.iam = callsign
-        self.primaries = primaries
+    def rendezvous_send(self, payload, conn):
+        print("Sending to %s M17M %s"%(conn,payload))
+        self.sock.sendto(b"M17M" + payload, conn)
 
     def query_primary( self, callsign):
         addr = m17.address.Address.encode(callsign)
@@ -138,32 +136,36 @@ class m17_simapp:
     def reply( self, packet, callsign, loc ):
         addr = m17.address.Address.encode(callsign)
         payload = json.dumps({"msgtype":"is at", "m17_addr": addr, "host":loc }).encode("utf-8")
-        self.sock.sendto(payload, conn)
+        self.rendezvous_send(payload, conn)
 
 
 
     def request_rendezvous(self, dsthost):
         payload = json.dumps({"msgtype":"introduce me?", "addr": dsthost, "port":17000 }).encode("utf-8")
         for introducer in self.primaries:
-            self.sock.sendto(payload, introducer)
+            self.rendezvous_send(payload, introducer)
     
     def arrange_rendezvous(self, conn, msg):
         # requires peer1 and peer2 both be connected live to self (e.g. keepalives)
         # make packet to send to peer1 with payload initiating connection to peer2 and vice versa
         payload = json.dumps({"msgtype":"introducing", "addr": conn[0], "port":17000 }).encode("utf-8")
-        self.sock.sendto(payload, (msg.addr,17000)) #we need to arrange the port too, don't we?
+        self.rendezvous_send(payload, (msg.addr,17000)) #we need to arrange the port too, don't we?
         payload = json.dumps({"msgtype":"introducing", "addr": msg.addr, "port":17000}).encode("utf-8")
-        self.sock.sendto(payload, conn)
+        self.rendezvous_send(payload, conn)
 
     def attempt_rendezvous(self, conn, msg):
         payload = json.dumps({"msgtype":"hi!"}).encode("utf-8")
-        self.sock.sendto(payload, (msg.addr,17000))
+        self.rendezvous_send(payload, (msg.addr,17000))
 
 
 if __name__ == "__main__":
     primaries = [("m17.programradios.com.",17000)]
-    x = m17_simapp()
-    x.register(sys.argv[1], primaries)
-    while 1:
-        x.loop_once()
-    # x.loop()
+    x = m17_networking(sys.argv[1], primaries)
+    # while 1:
+        # x.loop_once()
+    x.loop()
+    time.sleep(5)
+    for each in sys.argv[2:]:
+        x.query_primary(each)
+        time.sleep(1)
+    time.sleep(30)
