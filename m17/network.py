@@ -173,8 +173,12 @@ class m17_networking:
     def arrange_rendezvous(self, conn, msg):
         # requires peer1 and peer2 both be connected live to self (e.g. keepalives)
         #sent to opposing peer with other sides host and expected port
-        _,callsign = self.reg_fetch_by_conn(conn)
-        _,theirconn = self.reg_fetch_by_callsign(msg.callsign)
+        try:
+            _,callsign = self.reg_fetch_by_conn(conn)
+            _,theirconn = self.reg_fetch_by_callsign(msg.callsign)
+        except KeyError as e:
+            log.error("Missing a registration, didn't find %s"%(e))
+            return
         payload = json.dumps({"msgtype":"introducing", "callsign": callsign, "host": conn[0], "port":conn[1] }).encode("utf-8")
         self.M17J_send(payload, theirconn) #this port needs to be from our existing list of connections appropriate to the _callsign_
         #we need to arrange the port too, don't we? 
