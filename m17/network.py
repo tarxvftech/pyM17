@@ -50,13 +50,13 @@ class m17_networking:
         while 1:
             try:
                 data,conn = self.sock.recvfrom(1500)
-                # print("RECV",conn)
+                print("RECV",conn, data)
                 recvq.put((data,conn))
             except BlockingIOError as e:
                 pass
             if not sendq.empty():
                 data,conn = sendq.get_nowait()
-                # print("SEND",conn)
+                print("SEND",conn, data)
                 self.sock.sendto(data,conn)
             time.sleep(.0001)
 
@@ -117,8 +117,8 @@ class m17_networking:
                 #make packets to punch holes allowing other peer to contact us
                 self.attempt_rendezvous(conn,msg)
             elif msg.msgtype == "hi!": #got an "oh hey" packet
-                #ignore it, it's just there to poke a hole so we can receive datagrams through it
                 print("Got a holepunch packet from %s!"%(str(conn)))
+                self.reg_store(msg.callsign, conn) #so we store it
         else:
             print("payload unrecognized")
             print("payload = ",payload)
@@ -185,6 +185,22 @@ class m17_networking:
         payload = json.dumps({"msgtype":"hi!", "callsign": msg.callsign}).encode("utf-8")
         self.M17J_send(payload, (msg.host,msg.port))
 
+    def have_link(self, callsign):
+        try:
+            last,conn = self.reg_fetch_by_callsign(callsign)
+            return time.time() - last
+        except KeyError as e:
+            return False
+
+    def callsign_connect(self, callsign):
+        self.request_rendezvous(callsign)
+        start = time.time()
+        while not self.have_link(callsign):
+            time.sleep(.003)
+            if time.time() - start > 3:
+                return False
+        #TODO now start the auto-keepalives here
+        return True
 
 if __name__ == "__main__":
     primaries = [("m17.programradios.com.",17000)]
@@ -197,14 +213,10 @@ if __name__ == "__main__":
     x = m17_networking(primaries, callsign=callsign, port=portnum )
     x.loop()
     import pdb; pdb.set_trace()
-    #on selection of reflector or remote user:
-    # x.callsign_lookup("M17REF A") #returns where to find that noun
-    # x.callsign_lookup("W2FBI A")
-    # x.callsign_lookup("W2FBI")
+
     # x.callsign_connect("W2FBI") #this is how you do an automatic udp hole punch. 
     # #Registers the connection and maintains keepalives with that host. They should do the same.
-    # x.check_link("W2FBI") #check we are connected
-    # x.check_link("17.12.15.13") #check 
+    # x.have_link("W2FBI") #check we are connected
     # x.callsign_disco("W2FBI") #this is how you stop the keepalives and kill that connection
 
     #get results ... how?
