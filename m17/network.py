@@ -49,7 +49,7 @@ class m17_networking:
         def looper(self):
             while 1:
                 self.loop_once()
-                time.sleep(.001)
+                time.sleep(.005)
         self.looper = threading.Thread(target=looper, args=(self,))
         self.looper.start()
 
@@ -170,8 +170,9 @@ if __name__ == "__main__":
     # while 1:
         # x.loop_once()
     x.loop()
-    time.sleep(5)
-    for each in sys.argv[2:]:
-        x.query_primary(each)
-        time.sleep(1)
-    time.sleep(30)
+    import pdb; pdb.set_trace()
+    # time.sleep(5)
+    # for each in sys.argv[2:]:
+        # x.query_primary(each)
+        # time.sleep(1)
+    # time.sleep(30)
