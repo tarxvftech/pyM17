@@ -15,6 +15,8 @@ import threading
 
 import bitstruct
 import m17
+import m17.misc
+from m17.misc import dattr
 import m17.address
 
 class m17_networking:
