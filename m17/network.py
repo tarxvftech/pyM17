@@ -19,6 +19,7 @@ import m17.misc
 from m17.misc import dattr
 import m17.address
 
+
 class m17_networking:
     def __init__(self, callsign, primaries):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -30,12 +31,14 @@ class m17_networking:
         self.sendQ = queue.Queue()
         network = threading.Thread(target=self.networker, args=(self.recvQ, self.sendQ))
         network.start()
-
-        self.conns = {}
+ 
+        self.conns = {} #i was intending this for client side, not sure it makes sense
 
         self.whereis = {}
+
         self.primaries = primaries
         self.callsign = callsign
+        self.m17_addr = m17.address.Address.encode(self.callsign)
 
         self.last = 0
         self.registration_keepalive_period = 25
@@ -95,18 +98,16 @@ class m17_networking:
         elif payload.startswith(b"M17J"): #M17 Json development and evaluation protocol - the standard is, there is no standard
             msg = dattr(json.loads(payload[4:].decode("utf-8")))
             print("registration",msg,conn)
-            callsign = m17.address.Address.decode(msg.m17_addr)
             if msg.msgtype == "i am here": #remote host asks to tie their host and callsign together
-                self.reg_store(callsign, conn) #so we store it
-            elif msg.msgtype == "where is?": #getting a query for a stored callsign
-                loc,port,lastseen = self.reg_fetch( callsign )
-                self.answer_where_is( conn, callsign, loc)
-            elif msg.msgtype == "is at": #getting a reply to a query
-                print("Found %s at %s!"%(callsign, msg.host))
-                # self.store( callsign, packet.srchost)
-                ... #and now we continue with what we were trying to do, i s'pose
-                # request rendezvous? here isn't where I want it to happen, but lets prove the concept i guess
-                self.request_rendezvous(msg.host)
+                self.reg_store(msg.callsign, conn) #so we store it
+            # elif msg.msgtype == "where is?": #getting a query for a stored callsign
+                # lastseen,theirconn = self.reg_fetch( callsign )
+                # self.answer_where_is( conn, callsign, theirconn)
+            # elif msg.msgtype == "is at": #getting a reply to a query
+                # print("Found %s at %s!"%(callsign, msg.host))
+                # # self.store( callsign, packet.srchost)
+                # ... #and now we continue with what we were trying to do, i s'pose
+                # # request rendezvous? here isn't where I want it to happen, but lets prove the concept i guess
             elif msg.msgtype == "introduce me?": #got a request: please introduce me to host, i'm trying to talk to them on port...
                 ...
                 #make a packet each to introduce peer1 and peer2
@@ -132,56 +133,57 @@ class m17_networking:
             return
         sincelastrun = time.time() - self.last
         if sincelastrun > self.registration_keepalive_period:
-            addr = m17.address.Address.encode(self.callsign)
             for primary in primaries:
                 self.register_me_with( primary )
             self.last = time.time()
 
-    def register_me_with(self, conn):
-        payload = json.dumps({"msgtype":"i am here", "m17_addr": addr }).encode("utf-8")
-        self.M17J_send(payload, primary)
+    def register_me_with(self, server):
+        payload = json.dumps({"msgtype":"i am here", "callsign": self.callsign }).encode("utf-8")
+        self.M17J_send(payload, server)
 
     def reg_store(self, callsign, conn):
-        host,port = conn
         print("[M17 registration] %s -> %s"%(callsign, conn))
-        self.whereis[ callsign ] = (host,port,time.time())
+        self.whereis[ callsign ] = (time.time(), conn)
+        self.whereis[ conn ] = (time.time(), callsign)
 
-    def reg_fetch( self, callsign ):
+    def reg_fetch_by_callsign( self, callsign ):
         return self.whereis[callsign]
-
-    def ask_where_is( self, callsign, server ):
-        addr = m17.address.Address.encode(callsign)
-        payload = json.dumps({"msgtype":"where is?", "m17_addr": addr }).encode("utf-8")
-        self.M17J_send(payload, server)
+    def reg_fetch_by_conn( self, conn ):
+        return self.whereis[conn]
 
     def callsign_lookup( self, callsign):
         for primary in self.primaries:
             self.ask_where_is( callsign, primary )
 
-    def answer_where_is( self, conn, callsign, loc ):
-        addr = m17.address.Address.encode(callsign)
-        payload = json.dumps({"msgtype":"is at", "m17_addr": addr, "host":loc }).encode("utf-8")
-        self.rendezvous_send(payload, conn)
+    # def ask_where_is( self, callsign, server ):
+        # addr = m17.address.Address.encode(callsign)
+        # payload = json.dumps({"msgtype":"where is?", "m17_addr": addr }).encode("utf-8")
+        # self.M17J_send(payload, server)
+    # def answer_where_is( self, conn, callsign, loc ):
+        # addr = m17.address.Address.encode(callsign)
+        # payload = json.dumps({"msgtype":"is at", "m17_addr": addr, "host":loc[0] }).encode("utf-8")
+        # self.rendezvous_send(payload, conn)
 
     #the rendezvous stuff starts here
-    def request_rendezvous(self, dsthost):
-        payload = json.dumps({"msgtype":"introduce me?", "addr": dsthost, "port":17000 }).encode("utf-8")
-        #their addr, but my port
+    def request_rendezvous(self, callsign):
+        payload = json.dumps({"msgtype":"introduce me?", "callsign": callsign }).encode("utf-8")
         for introducer in self.primaries:
             self.M17J_send(payload, introducer)
     
     def arrange_rendezvous(self, conn, msg):
         # requires peer1 and peer2 both be connected live to self (e.g. keepalives)
         #sent to opposing peer with other sides host and expected port
-        payload = json.dumps({"msgtype":"introducing", "addr": conn[0], "port":17000 }).encode("utf-8")
-        self.M17J_send(payload, (msg.addr,17000)) #this port needs to be from our existing list of connections appropriate to the _callsign_
+        _,callsign = self.reg_fetch_by_conn(conn)
+        payload = json.dumps({"msgtype":"introducing", "callsign": callsign, "host": conn[0], "port":conn[1] }).encode("utf-8")
+        self.M17J_send(payload, (msg.addr,)) #this port needs to be from our existing list of connections appropriate to the _callsign_
         #we need to arrange the port too, don't we? 
-        payload = json.dumps({"msgtype":"introducing", "addr": msg.addr, "port":17000}).encode("utf-8")
+        _,theirconn = self.reg_fetch_by_callsign(msg.callsign)
+        payload = json.dumps({"msgtype":"introducing", "callsign": msg.callsign, "host": theirconn[0], "port":theirconn[1] }).encode("utf-8")
         self.M17J_send(payload, conn) #this one we can reply to directly, of course
 
     def attempt_rendezvous(self, conn, msg):
-        payload = json.dumps({"msgtype":"hi!"}).encode("utf-8")
-        self.M17J_send(payload, (msg.addr,17000))
+        payload = json.dumps({"msgtype":"hi!", "callsign": msg.callsign}).encode("utf-8")
+        self.M17J_send(payload, (msg.host,msg.port))
 
 
 if __name__ == "__main__":
