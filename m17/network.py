@@ -54,7 +54,7 @@ class m17_networking:
     def loop_once(self):
         self.register_loop_once()
         if not self.recvQ.empty():
-            data,conn = recvQ.get_nowait()
+            data,conn = self.recvQ.get_nowait()
             if conn[0] not in self.conns:
                 self.conns[ conn[0] ] = dattr({
                     last: time.time(),
