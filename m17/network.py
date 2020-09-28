@@ -152,7 +152,7 @@ class m17_networking:
             self.registration_send(payload, primary)
 
 
-    def registration_reply( self, packet, callsign, loc ):
+    def registration_reply( self, conn, callsign, loc ):
         addr = m17.address.Address.encode(callsign)
         payload = json.dumps({"msgtype":"is at", "m17_addr": addr, "host":loc }).encode("utf-8")
         self.rendezvous_send(payload, conn)
@@ -190,7 +190,7 @@ if __name__ == "__main__":
             # events += 1
 
     x.loop()
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
     # time.sleep(5)
     # for each in sys.argv[2:]:
         # x.query_primary(each)
