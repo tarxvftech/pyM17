@@ -69,7 +69,7 @@ class m17_networking:
         self.looper.start()
 
     def clean_conns(self):
-        print(self.conns)
+        ...
         # self.conns = {conn: data for conn, data in self.conns if time.time() - data.last > self.connection_timeout}
 
     def loop_once(self):
@@ -86,7 +86,7 @@ class m17_networking:
             else:
                 self.conns[ conn[0] ].last = time.time()
             self.process_packet( data, conn )
-        self.clean_conns()
+        # self.clean_conns()
 
     def M17J_send(self, payload, conn):
         print("Sending to %s M17J %s"%(conn,payload))
