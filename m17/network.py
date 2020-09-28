@@ -162,7 +162,8 @@ class m17_networking:
 
 
 if __name__ == "__main__":
-    primaries = [("localhost",17000),("m17.programradios.com.",17000)]
+    # primaries = [("localhost",17000),("m17.programradios.com.",17000)]
+    primaries = [("m17.programradios.com.",17000)]
     x = m17_networking(sys.argv[1], primaries)
     # while 1:
         # x.loop_once()
