@@ -177,7 +177,7 @@ class m17_networking:
             _,callsign = self.reg_fetch_by_conn(conn)
             _,theirconn = self.reg_fetch_by_callsign(msg.callsign)
         except KeyError as e:
-            log.error("Missing a registration, didn't find %s"%(e))
+            logging.error("Missing a registration, didn't find %s"%(e))
             return
         payload = json.dumps({"msgtype":"introducing", "callsign": callsign, "host": conn[0], "port":conn[1] }).encode("utf-8")
         self.M17J_send(payload, theirconn) #this port needs to be from our existing list of connections appropriate to the _callsign_
