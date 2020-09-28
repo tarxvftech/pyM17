@@ -88,8 +88,8 @@ class m17_networking:
         self.clean_conns()
 
     def M17J_send(self, payload, conn):
-        print("Sending to %s M17M %s"%(conn,payload))
-        self.sendQ.put((b"M17M" + payload, conn))
+        print("Sending to %s M17J %s"%(conn,payload))
+        self.sendQ.put((b"M17J" + payload, conn))
 
     def process_packet(self, payload, conn):
         if payload.startswith(b"M17 "):
