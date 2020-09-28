@@ -87,6 +87,7 @@ class m17_networking:
                 self.conns[ conn[0] ].last = time.time()
             self.process_packet( data, conn )
         # self.clean_conns()
+        # self.clean_whereis()
 
     def M17J_send(self, payload, conn):
         print("Sending to %s M17J %s"%(conn,payload))
@@ -152,10 +153,9 @@ class m17_networking:
     def reg_fetch_by_conn( self, conn ):
         return self.whereis[conn]
 
-    def callsign_lookup( self, callsign):
-        for primary in self.primaries:
-            self.ask_where_is( callsign, primary )
-
+    # def callsign_lookup( self, callsign):
+        # for primary in self.primaries:
+            # self.ask_where_is( callsign, primary )
     # def ask_where_is( self, callsign, server ):
         # addr = m17.address.Address.encode(callsign)
         # payload = json.dumps({"msgtype":"where is?", "m17_addr": addr }).encode("utf-8")
@@ -175,10 +175,10 @@ class m17_networking:
         # requires peer1 and peer2 both be connected live to self (e.g. keepalives)
         #sent to opposing peer with other sides host and expected port
         _,callsign = self.reg_fetch_by_conn(conn)
-        payload = json.dumps({"msgtype":"introducing", "callsign": callsign, "host": conn[0], "port":conn[1] }).encode("utf-8")
-        self.M17J_send(payload, (msg.addr,)) #this port needs to be from our existing list of connections appropriate to the _callsign_
-        #we need to arrange the port too, don't we? 
         _,theirconn = self.reg_fetch_by_callsign(msg.callsign)
+        payload = json.dumps({"msgtype":"introducing", "callsign": callsign, "host": conn[0], "port":conn[1] }).encode("utf-8")
+        self.M17J_send(payload, theirconn) #this port needs to be from our existing list of connections appropriate to the _callsign_
+        #we need to arrange the port too, don't we? 
         payload = json.dumps({"msgtype":"introducing", "callsign": msg.callsign, "host": theirconn[0], "port":theirconn[1] }).encode("utf-8")
         self.M17J_send(payload, conn) #this one we can reply to directly, of course
 
@@ -191,6 +191,7 @@ if __name__ == "__main__":
     primaries = [("m17.programradios.com.",17000)]
     x = m17_networking(sys.argv[1], primaries)
     x.loop()
+    import pdb; pdb.set_trace()
     #on selection of reflector or remote user:
     # x.callsign_lookup("M17REF A") #returns where to find that noun
     # x.callsign_lookup("W2FBI A")
