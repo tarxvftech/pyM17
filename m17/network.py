@@ -41,7 +41,7 @@ class m17_networking:
         """
         while 1:
             data,conn = self.sock.recvfrom(1500)
-            outq.put((data,conn))
+            self.recvQ.put((data,conn))
 
     def loop(self):
         def looper(self):
