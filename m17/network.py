@@ -50,13 +50,13 @@ class m17_networking:
         while 1:
             try:
                 data,conn = self.sock.recvfrom(1500)
-                print("RECV",conn)
+                # print("RECV",conn)
                 recvq.put((data,conn))
             except BlockingIOError as e:
                 pass
             if not sendq.empty():
                 data,conn = sendq.get_nowait()
-                print("SEND",conn)
+                # print("SEND",conn)
                 self.sock.sendto(data,conn)
             time.sleep(.0001)
 
@@ -90,7 +90,7 @@ class m17_networking:
         # self.clean_whereis()
 
     def M17J_send(self, payload, conn):
-        print("Sending to %s M17J %s"%(conn,payload))
+        # print("Sending to %s M17J %s"%(conn,payload))
         self.sendQ.put((b"M17J" + payload, conn))
 
     def process_packet(self, payload, conn):
@@ -208,4 +208,5 @@ if __name__ == "__main__":
     # x.callsign_disco("W2FBI") #this is how you stop the keepalives and kill that connection
 
     #get results ... how?
+    #hosts behind the same nat can expect failure when doing a direct call to each other
 
