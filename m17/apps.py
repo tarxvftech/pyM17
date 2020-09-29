@@ -41,6 +41,21 @@ def voipsim(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=default_por
     print(config)
     modular(config, [tx_chain])
 
+
+def to_pcm(mode=3200,port=default_port):
+    mode=int(mode) #so we can call modular_client straight from command line
+    port=int(port)
+    rx_chain = [udp_recv(port), m17parse, payload2codec2, codec2dec, teefile('m17.raw'), null]
+    config = default_config(mode)
+    modular(config, [rx_chain])
+
+def recv_dump(mode=3200,port=default_port):
+    mode=int(mode) #so we can call modular_client straight from command line
+    port=int(port)
+    rx_chain = [udp_recv(port), teefile("rx"), m17parse, tee('M17'), payload2codec2, teefile('out.c2_3200'),codec2dec, teefile('out.raw'), spkr_audio]
+    config = default_config(mode)
+    modular(config, [rx_chain])
+
 def voip(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=default_port, voipmode="full"):
     mode=int(mode) #so we can call modular_client straight from command line
     port=int(port)
@@ -52,7 +67,7 @@ def voip(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=default_port, 
     # if nothing else, simple to reason about
 
     tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, udp_send((host,port))]
-    rx_chain = [udp_recv(port), tee("rx"), m17parse, payload2codec2, codec2dec, spkr_audio]
+    rx_chain = [udp_recv(port), m17parse, payload2codec2, codec2dec, spkr_audio]
     if voipmode == "tx":
         #disable the rx chain
         #useful for when something's already bound to listening port

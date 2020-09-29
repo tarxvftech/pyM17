@@ -20,7 +20,36 @@ from m17.misc import dattr
 import m17.address
 
 
-class m17_networking:
+class m17_networking_dht(m17_networking_direct):
+    """
+    real p2p for callsign lookup and introductions
+    visualization tool for reading logs and a config to see packets and streams
+        going back and forth between nodes, slowed down
+
+    bayeux style multicast for heavily linked reflectors?
+    DHT multicast for reflectors in general
+    So unicast comes into reflector, who then broadcasts it back out...
+    borg https://engineering.purdue.edu/~ychu/publications/borg.pdf
+    bayeux https://apps.dtic.mil/sti/pdfs/ADA603200.pdf
+    https://inst.eecs.berkeley.edu//~cs268/sp03/notes/Lecture22.pdf
+    http://www0.cs.ucl.ac.uk/staff/B.Karp/opendht-sigcomm2005.pdf
+    https://sites.cs.ucsb.edu/~ravenben/talks/apis-1-03.pdf
+    https://www.cs.cornell.edu/home/rvr/papers/willow.pdf
+    http://p2p.cs.ucsb.edu/chimera/html/overview.html
+    https://sites.cs.ucsb.edu/~ravenben/publications/pdf/tapestry_jsac.pdf
+    http://p2p.cs.ucsb.edu/chimera/html/papers.html
+    http://rowstron.azurewebsites.net/
+    https://www2.eecs.berkeley.edu/Pubs/TechRpts/2001/CSD-01-1141.pdf
+    http://p2p.cs.ucsb.edu/chimera/html/home.html
+    http://p2p.cs.ucsb.edu/cashmere/
+    http://p2p.cs.ucsb.edu/chimera/html/overview.html
+    https://github.com/topics/distributed-hash-table?o=asc&s=stars
+    https://github.com/bmuller/kademlia
+    https://github.com/DivyanshuSaxena/Distributed-Hash-Tables
+    """
+    pass
+
+class m17_networking_direct:
     def __init__(self, primaries, callsign, port=17000):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind( ("0.0.0.0", port) )
@@ -230,3 +259,10 @@ if __name__ == "__main__":
 
     #hosts behind the same nat can expect failure when doing a direct call to each other, not exactly sure why - seems to be related to hairpin NATing
 
+
+#spin this up on a public host for a demo like 
+#`python3 -m m17.network CALLSIGN -s`
+# (and put the address of the public server in primaries like m17.programradios.com, above) 
+
+# demo clients should each `python3 -m m17.network UNIQUE_CALLSIGN` 
+# and then one can type x.connect_callsign(

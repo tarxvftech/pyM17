@@ -13,7 +13,6 @@ from .blocks import *
 
 import numpy
 
-
 def zeros(size, dtype, rate):
     def fn(config, inq, outq):
         while 1:
