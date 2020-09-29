@@ -49,6 +49,29 @@ def tee(header):
             outq.put(x)
     return fn
 
+def ffmpeg(ffmpeg_url):
+    ffmpeg_url_example="icecast://source:m17@m17tester.tarxvf.tech:876/live.ogg"
+    def fn(config, inq, outq):
+        from subprocess import Popen, PIPE, STDOUT
+        p = Popen(
+                ["ffmpeg","-re", #ffmpeg, and limit reading rate to native speed so we don't spin a whole core with writing zeros to icecast
+                    "-f","s16le","-ar", "8000", "-ac", "1", "-i", "/dev/stdin", #the input options
+                    "-ar", "48000", "-ac", "2",
+                    "-content_type", "'application/mpeg'",  #only support ogg for now
+                    ffmpeg_url]
+                , stdout=PIPE, stdin=PIPE, stderr=PIPE)
+        while 1:
+            try: 
+                # audio = inq.get_nowait()
+                audio = inq.get()
+                p.stdin.write( audio.tobytes() )
+            except queue.Empty as e:
+                sys.stdout.write('aU')
+                audio = numpy.zeros(config.codec2.conrate,dtype="<h")
+            sys.stdout.flush()
+            # time.sleep(1/50)
+    return fn
+
 def teefile(filename):
     """
     Same as tee, except assumes elements coming in are bytes, and writes
