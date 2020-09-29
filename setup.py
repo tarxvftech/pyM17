@@ -10,8 +10,8 @@ DESCRIPTION = 'M17 radio (and radio-over-IP) protocol implementation. https://gi
 URL = 'https://git.mmcginty.me/mike/pym17'
 EMAIL = 'pyM17@tarxvf.tech'
 AUTHOR = 'tarxvf'
-REQUIRES_PYTHON = '>=3.8.0'
-VERSION = '0.0.7'
+REQUIRES_PYTHON = '>=3.5.0'
+VERSION = '0.0.8'
 
 REQUIRED=[
         "bitstruct",
