@@ -263,7 +263,7 @@ class m17_networking_dht:
             if boot:
                 await node.bootstrap([
                     ("m17dhtboot0.tarxvf.tech", 17001),
-                    ("m17dhtboot1.tarxvf.tech", 17001)
+                    # ("m17dhtboot1.tarxvf.tech", 17001)
                     ])
             await self.register_me()
             for c in ["","-M","-T","-F"]:
