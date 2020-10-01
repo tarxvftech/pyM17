@@ -275,8 +275,10 @@ class m17_networking_dht:
         asyncio.run( startup() )
 
     async def register_me(self):
-        await self.node.set( self.callsign, (self.host, self.port) )
-        await self.node.set( (self.host, self.port), self.callsign )
+        me = [self.host,self.port)
+        jme = json.dumps(me)
+        await self.node.set( self.callsign, jme)
+        await self.node.set( jme , self.callsign )
 
 if __name__ == "__main__":
     if sys.argv[1] == "dht":
