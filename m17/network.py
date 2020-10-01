@@ -288,7 +288,8 @@ if __name__ == "__main__":
 
         should_boot = bool(sys.argv[4].lower() in ["true","yes","1"])
         x= m17_networking_dht(callsign,host,should_boot)
-        time.sleep(30)
+        while 1:
+            time.sleep(30)
         import pdb; pdb.set_trace()
 
     else:
