@@ -218,7 +218,19 @@ class m17_networking_direct:
                 return False
         #TODO now start the auto-keepalives here
         return True
+async def repeat(interval, func, *args, **kwargs):
+    """Run func every interval seconds.
 
+    If func has not finished before *interval*, will run again
+    immediately when the previous iteration finished.
+
+    *args and **kwargs are passed as the arguments to func.
+    """
+    while True:
+        await asyncio.gather(
+            func(*args, **kwargs),
+            asyncio.sleep(interval),
+        )
 class m17_networking_dht:
     """
     https://github.com/bmuller/kademlia
@@ -269,8 +281,14 @@ class m17_networking_dht:
                 ("m17dhtboot0.tarxvf.tech", 17001),
                 # ("m17dhtboot1.tarxvf.tech", 17001)
                 ])
-            await self.register_me()
-            await self.node.get(self.callsign)
+        await self.register_me()
+        t2 = asyncio.ensure_future(repeat(15, self.check))
+
+    async def check(self):
+        async for c in ["","-M","-T","-F"]:
+            call = "W2FBI" + c
+            x = await self.node.get(call)
+            print(call,x)
 
         
     async def register_me(self):
