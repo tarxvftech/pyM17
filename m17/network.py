@@ -269,7 +269,7 @@ class m17_networking_dht:
             for c in ["","-M","-T","-F"]:
                 call = "W2FBI"+c
                 x = await self.node.get(call)
-                print("got " call, " : ", x)
+                print("got ", call, " : ", x)
 
 
         asyncio.run( startup() )
