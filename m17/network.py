@@ -314,9 +314,9 @@ if __name__ == "__main__":
         #curl ident.me, or should check with dht bootstrapping nodes
         should_boot = bool(sys.argv[4].lower() in ["true","yes","1"])
         loop = asyncio.get_event_loop()
-        loop.set_debug(True)
         x=m17_networking_dht(callsign,host,should_boot)
-        asyncio.run(x.run())
+        loop.run_until_complete(x.run())
+        loop.set_debug(True)
         loop.run_forever()
 
     else:
