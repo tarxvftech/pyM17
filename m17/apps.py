@@ -42,10 +42,18 @@ def voipsim(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=default_por
     modular(config, [tx_chain])
 
 
+def to_icecast(icecast_url, mode=3200,port=default_port):
+    mode=int(mode) #so we can call modular_client straight from command line
+    port=int(port)
+    rx_chain = [udp_recv(port), m17parse, payload2codec2, codec2dec, ffmpeg(icecast_url)]
+    # rx_chain = [udp_recv(port), m17parse, tee('m17'), payload2codec2, codec2dec, ffmpeg(icecast_url)]
+    config = default_config(mode)
+    modular(config, [rx_chain])
+
 def to_pcm(mode=3200,port=default_port):
     mode=int(mode) #so we can call modular_client straight from command line
     port=int(port)
-    rx_chain = [udp_recv(port), m17parse, payload2codec2, codec2dec, teefile('m17.raw'), null]
+    rx_chain = [udp_recv(port), m17parse, tee('m17'), payload2codec2, codec2dec, teefile('m17.raw'), null]
     config = default_config(mode)
     modular(config, [rx_chain])
 
