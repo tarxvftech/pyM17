@@ -282,6 +282,9 @@ class m17_networking_dht:
         await self.node.set( jme , self.callsign )
 
 if __name__ == "__main__":
+    def loop_once(loop):
+        loop.stop()
+        loop.run_forever()
     if sys.argv[1] == "dhtclient":
         async def run():
             server = Server()
@@ -290,7 +293,6 @@ if __name__ == "__main__":
             await server.bootstrap([bootstrap_node])
             await server.set(sys.argv[4], sys.argv[5])
             server.stop()
-
         asyncio.run(run())
     elif sys.argv[1] == "dhtserver":
         loop = asyncio.get_event_loop()
@@ -298,7 +300,11 @@ if __name__ == "__main__":
         server = Server()
         loop.run_until_complete(server.listen(8468))
         try:
-            loop.run_forever()
+            while 1:
+                print("test")
+                loop_once(loop)
+                time.sleep(.5)
+            # loop.run_forever()
         except KeyboardInterrupt:
             pass
         finally:
