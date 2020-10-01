@@ -26,12 +26,12 @@ import m17.address
 
 
 class msgtype(enum.Enum):
-    i_am_here  = enum.auto() #remote host asks to tie their host and callsign together
-    where_is = enum.auto() #getting a query for a stored callsign
-    is_at = enum.auto() #getting a reply to a query
-    introduce_me = enum.auto() #got a request: please introduce me to host, i'm trying to talk to them on port...
-    introducing = enum.auto() #got an intro: I have an introduction for you, please contact ...
-    hi = enum.auto() #got an "oh hey" packet
+    i_am_here  = 1 #remote host asks to tie their host and callsign together
+    where_is = 2 #getting a query for a stored callsign
+    is_at = 3 #getting a reply to a query
+    introduce_me = 4 #got a request: please introduce me to host, i'm trying to talk to them on port...
+    introducing = 5 #got an intro: I have an introduction for you, please contact ...
+    hi = 6 #got an "oh hey" packet
 
 class m17_networking_direct:
     def __init__(self, primaries, callsign, port=17000):
