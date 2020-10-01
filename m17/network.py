@@ -13,6 +13,9 @@ import socket
 import queue
 import threading
 
+import asyncio
+from kademlia.network import Server
+
 import bitstruct
 import m17
 import m17.misc
@@ -20,34 +23,15 @@ from m17.misc import dattr
 import m17.address
 
 
-class m17_networking_dht(m17_networking_direct):
-    """
-    real p2p for callsign lookup and introductions
-    visualization tool for reading logs and a config to see packets and streams
-        going back and forth between nodes, slowed down
 
-    bayeux style multicast for heavily linked reflectors?
-    DHT multicast for reflectors in general
-    So unicast comes into reflector, who then broadcasts it back out...
-    borg https://engineering.purdue.edu/~ychu/publications/borg.pdf
-    bayeux https://apps.dtic.mil/sti/pdfs/ADA603200.pdf
-    https://inst.eecs.berkeley.edu//~cs268/sp03/notes/Lecture22.pdf
-    http://www0.cs.ucl.ac.uk/staff/B.Karp/opendht-sigcomm2005.pdf
-    https://sites.cs.ucsb.edu/~ravenben/talks/apis-1-03.pdf
-    https://www.cs.cornell.edu/home/rvr/papers/willow.pdf
-    http://p2p.cs.ucsb.edu/chimera/html/overview.html
-    https://sites.cs.ucsb.edu/~ravenben/publications/pdf/tapestry_jsac.pdf
-    http://p2p.cs.ucsb.edu/chimera/html/papers.html
-    http://rowstron.azurewebsites.net/
-    https://www2.eecs.berkeley.edu/Pubs/TechRpts/2001/CSD-01-1141.pdf
-    http://p2p.cs.ucsb.edu/chimera/html/home.html
-    http://p2p.cs.ucsb.edu/cashmere/
-    http://p2p.cs.ucsb.edu/chimera/html/overview.html
-    https://github.com/topics/distributed-hash-table?o=asc&s=stars
-    https://github.com/bmuller/kademlia
-    https://github.com/DivyanshuSaxena/Distributed-Hash-Tables
-    """
-    pass
+
+class msgtype(enum.Enum):
+    i_am_here  = enum.auto() #remote host asks to tie their host and callsign together
+    where_is = enum.auto() #getting a query for a stored callsign
+    is_at = enum.auto() #getting a reply to a query
+    introduce_me = enum.auto() #got a request: please introduce me to host, i'm trying to talk to them on port...
+    introducing = enum.auto() #got an intro: I have an introduction for you, please contact ...
+    hi = enum.auto() #got an "oh hey" packet
 
 class m17_networking_direct:
     def __init__(self, primaries, callsign, port=17000):
@@ -128,26 +112,22 @@ class m17_networking_direct:
             #voice and data packets
         elif payload.startswith(b"M17J"): #M17 Json development and evaluation protocol - the standard is, there is no standard
             msg = dattr(json.loads(payload[4:].decode("utf-8")))
-            if msg.msgtype == "i am here": #remote host asks to tie their host and callsign together
+            if msg.msgtype == msgtype.i_am_here: 
                 self.reg_store(msg.callsign, conn) #so we store it
-            # elif msg.msgtype == "where is?": #getting a query for a stored callsign
-                # lastseen,theirconn = self.reg_fetch( callsign )
-                # self.answer_where_is( conn, callsign, theirconn)
-            # elif msg.msgtype == "is at": #getting a reply to a query
-                # print("Found %s at %s!"%(callsign, msg.host))
-                # # self.store( callsign, packet.srchost)
-                # ... #and now we continue with what we were trying to do, i s'pose
-                # # request rendezvous? here isn't where I want it to happen, but lets prove the concept i guess
-            elif msg.msgtype == "introduce me?": #got a request: please introduce me to host, i'm trying to talk to them on port...
-                ...
-                #make a packet each to introduce peer1 and peer2
+            elif msg.msgtype == msgtype.where_is:
+                lastseen,theirconn = self.reg_fetch( callsign )
+                self.answer_where_is( conn, callsign, theirconn)
+            elif msg.msgtype == msgtype.is_at:
+                print("Found %s at %s!"%(msg.callsign, msg.host))
+                self.reg_store(msg.callsign, (msg.host,msg.port))
+
+            elif msg.msgtype == msgtype.introduce_me: 
                 self.arrange_rendezvous(conn,msg)
-            elif msg.msgtype == "introducing": #got an intro: I have an introduction for you, please contact ...
-                #make packets to punch holes allowing other peer to contact us
+            elif msg.msgtype == msgtype.introducing: 
                 self.attempt_rendezvous(conn,msg)
-            elif msg.msgtype == "hi!": #got an "oh hey" packet
+            elif msg.msgtype == msgtype.hi:
                 print("Got a holepunch packet from %s!"%(str(conn)))
-                self.reg_store(msg.callsign, conn) #so we store it
+                self.reg_store(msg.callsign, conn)
         else:
             print("payload unrecognized")
             print("payload = ",payload)
@@ -239,17 +219,81 @@ class m17_networking_direct:
         #TODO now start the auto-keepalives here
         return True
 
+class m17_networking_dht:
+    """
+    real p2p for callsign lookup and introductions?
+    visualization tool for reading logs and a config to see packets and streams
+        going back and forth between nodes, slowed down?
+
+    bayeux style multicast for heavily linked reflectors?
+    DHT multicast for reflectors in general
+    So unicast comes into reflector, who then broadcasts it back out...
+
+    http://www.cs.columbia.edu/~jae/papers/bootstrap-paper-v3.2-icc11-camera.pdf
+    borg https://engineering.purdue.edu/~ychu/publications/borg.pdf
+    bayeux https://apps.dtic.mil/sti/pdfs/ADA603200.pdf
+    https://inst.eecs.berkeley.edu//~cs268/sp03/notes/Lecture22.pdf
+    http://www0.cs.ucl.ac.uk/staff/B.Karp/opendht-sigcomm2005.pdf
+    https://sites.cs.ucsb.edu/~ravenben/talks/apis-1-03.pdf
+    https://www.cs.cornell.edu/home/rvr/papers/willow.pdf
+    http://p2p.cs.ucsb.edu/chimera/html/overview.html
+    https://sites.cs.ucsb.edu/~ravenben/publications/pdf/tapestry_jsac.pdf
+    http://p2p.cs.ucsb.edu/chimera/html/papers.html
+    http://rowstron.azurewebsites.net/
+    https://www2.eecs.berkeley.edu/Pubs/TechRpts/2001/CSD-01-1141.pdf
+    http://p2p.cs.ucsb.edu/chimera/html/home.html
+    http://p2p.cs.ucsb.edu/cashmere/
+    http://p2p.cs.ucsb.edu/chimera/html/overview.html
+    https://github.com/topics/distributed-hash-table?o=asc&s=stars
+    https://github.com/bmuller/kademlia
+    https://github.com/DivyanshuSaxena/Distributed-Hash-Tables
+    http://citeseerx.ist.psu.edu/viewdoc/download?rep=rep1&type=pdf&doi=10.1.1.218.6222
+    https://pdos.csail.mit.edu/~jinyang/pub/nsdi04.pdf
+    https://dsf.berkeley.edu/papers/sigcomm05-placelab.pdf
+    https://cs.baylor.edu/~donahoo/papers/MCD15.pdf
+    """
+    def __init__(self, callsign, myhost, boot=True):
+        self.callsign = callsign
+        self.host = myhost
+        self.port = 17001
+        node = Server()
+        self.node = node
+        async def startup():
+            await node.listen(17001)
+            if boot:
+                await node.bootstrap([
+                    ("m17dhtboot0.tarxvf.tech", 17001),
+                    ("m17dhtboot1.tarxvf.tech", 17001)
+                    ])
+            self.register_me()
+
+        asyncio.run( startup() )
+
+    def register_me(self):
+        self.node.set( self.callsign, (self.host, self.port) )
+        self.node.set( (self.host, self.port), self.callsign )
+
 if __name__ == "__main__":
-    primaries = [("m17.programradios.com.",17000)]
-    callsign = sys.argv[1]
-    if "-s" in sys.argv[2:]:
-        portnum = 17000
+    if sys.argv[1] == "dht":
+        callsign = sys.argv[2]
+        host = sys.argv[3] 
+        #curl ident.me, or should check with dht bootstrapping nodes
+
+        should_boot = bool(sys.argv[4].lower() in ["true","yes","1"])
+        x= m17_networking_dht(callsign,host,should_boot)
+        import pdb; pdb.set_trace()
+
     else:
-        portnum = (m17.address.Address.encode(callsign) % 32767) + 32767
-    print(portnum)
-    x = m17_networking(primaries, callsign=callsign, port=portnum )
-    x.loop()
-    import pdb; pdb.set_trace()
+        primaries = [("m17.programradios.com.",17000)]
+        callsign = sys.argv[1]
+        if "-s" in sys.argv[2:]:
+            portnum = 17000
+        else:
+            portnum = (m17.address.Address.encode(callsign) % 32767) + 32767
+        print(portnum)
+        x = m17_networking_direct(primaries, callsign=callsign, port=portnum )
+        x.loop()
+        import pdb; pdb.set_trace()
 
     # x.callsign_connect("W2FBI") #this is how you do an automatic udp hole punch. 
     # #Registers the connection and maintains keepalives with that host. They should do the same.
