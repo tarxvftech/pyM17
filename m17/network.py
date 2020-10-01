@@ -281,7 +281,7 @@ class m17_networking_dht:
                 ("m17dhtboot0.tarxvf.tech", 17001),
                 # ("m17dhtboot1.tarxvf.tech", 17001)
                 ])
-        await self.register_me()
+        t1 = asyncio.ensure_future(repeat(15, self.register_me))
         t2 = asyncio.ensure_future(repeat(15, self.check))
 
     async def check(self):
