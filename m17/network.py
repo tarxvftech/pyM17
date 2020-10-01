@@ -221,6 +221,9 @@ class m17_networking_direct:
 
 class m17_networking_dht:
     """
+    https://github.com/bmuller/kademlia
+
+
     real p2p for callsign lookup and introductions?
     visualization tool for reading logs and a config to see packets and streams
         going back and forth between nodes, slowed down?
@@ -258,23 +261,27 @@ class m17_networking_dht:
         self.port = 17001
         node = Server()
         self.node = node
+        def asiolo(self):
+            self.loop = asyncio.get_event_loop()
+            self.loop.set_debug(True)
+            self.loop.run_forever()
+        self.looper = threading.Thread(target=asiolo, args=(self,))
+        self.looper.start()
         async def startup():
             await node.listen(self.port)
             if boot:
                 await node.bootstrap([
                     ("m17dhtboot0.tarxvf.tech", 17001),
-                    ("togo", 17001),
                     # ("m17dhtboot1.tarxvf.tech", 17001)
                     ])
-            # await self.register_me()
-            # for c in ["","-M","-T","-F"]:
-                # call = "W2FBI"+c
-                # x = await self.node.get(call)
-                # print("got ", call, " : ", x)
-
+            await self.register_me()
+            for c in ["","-M","-T","-F"]:
+                call = "W2FBI"+c
+                x = await self.node.get(call)
+                print("got ", call, " : ", x)
 
         asyncio.run( startup() )
-
+        
     async def register_me(self):
         me = [self.host,self.port]
         jme = json.dumps(me)
@@ -317,8 +324,6 @@ if __name__ == "__main__":
 
         should_boot = bool(sys.argv[4].lower() in ["true","yes","1"])
         x= m17_networking_dht(callsign,host,should_boot)
-        while 1:
-            time.sleep(30)
         import pdb; pdb.set_trace()
 
     else:
