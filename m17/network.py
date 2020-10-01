@@ -315,12 +315,9 @@ if __name__ == "__main__":
         should_boot = bool(sys.argv[4].lower() in ["true","yes","1"])
         loop = asyncio.get_event_loop()
         loop.set_debug(True)
-        print("going!")
-        x= m17_networking_dht(callsign,host,should_boot)
-        print("going!")
+        x=m17_networking_dht(callsign,host,should_boot)
+        asyncio.run(x.run())
         loop.run_forever()
-
-        # asyncio.run(x.run())
 
     else:
         primaries = [("m17.programradios.com.",17000)]
