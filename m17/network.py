@@ -265,13 +265,18 @@ class m17_networking_dht:
                     ("m17dhtboot0.tarxvf.tech", 17001),
                     ("m17dhtboot1.tarxvf.tech", 17001)
                     ])
-            self.register_me()
+            await self.register_me()
+            for c in ["","-M","-T","-F"]:
+                call = "W2FBI"+c
+                x = await self.node.get(call)
+                print("got " call, " : ", x)
+
 
         asyncio.run( startup() )
 
-    def register_me(self):
-        self.node.set( self.callsign, (self.host, self.port) )
-        self.node.set( (self.host, self.port), self.callsign )
+    async def register_me(self):
+        await self.node.set( self.callsign, (self.host, self.port) )
+        await self.node.set( (self.host, self.port), self.callsign )
 
 if __name__ == "__main__":
     if sys.argv[1] == "dht":
@@ -281,6 +286,7 @@ if __name__ == "__main__":
 
         should_boot = bool(sys.argv[4].lower() in ["true","yes","1"])
         x= m17_networking_dht(callsign,host,should_boot)
+        time.sleep(30)
         import pdb; pdb.set_trace()
 
     else:
