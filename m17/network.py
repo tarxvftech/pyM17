@@ -259,17 +259,18 @@ class m17_networking_dht:
         node = Server()
         self.node = node
         async def startup():
-            await node.listen(17001)
+            await node.listen(self.port)
             if boot:
                 await node.bootstrap([
                     ("m17dhtboot0.tarxvf.tech", 17001),
+                    ("togo", 17001),
                     # ("m17dhtboot1.tarxvf.tech", 17001)
                     ])
-            await self.register_me()
-            for c in ["","-M","-T","-F"]:
-                call = "W2FBI"+c
-                x = await self.node.get(call)
-                print("got ", call, " : ", x)
+            # await self.register_me()
+            # for c in ["","-M","-T","-F"]:
+                # call = "W2FBI"+c
+                # x = await self.node.get(call)
+                # print("got ", call, " : ", x)
 
 
         asyncio.run( startup() )
@@ -281,7 +282,29 @@ class m17_networking_dht:
         await self.node.set( jme , self.callsign )
 
 if __name__ == "__main__":
-    if sys.argv[1] == "dht":
+    if sys.argv[1] == "dhtclient":
+        async def run():
+            server = Server()
+            await server.listen(8469)
+            bootstrap_node = (sys.argv[2], int(sys.argv[3]))
+            await server.bootstrap([bootstrap_node])
+            await server.set(sys.argv[4], sys.argv[5])
+            server.stop()
+
+        asyncio.run(run())
+    elif sys.argv[1] == "dhtserver":
+        loop = asyncio.get_event_loop()
+        loop.set_debug(True)
+        server = Server()
+        loop.run_until_complete(server.listen(8468))
+        try:
+            loop.run_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            server.stop()
+            loop.close()
+    elif sys.argv[1] == "dht":
         callsign = sys.argv[2]
         host = sys.argv[3] 
         #curl ident.me, or should check with dht bootstrapping nodes
