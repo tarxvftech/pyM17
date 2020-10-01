@@ -23,7 +23,7 @@ from m17.misc import dattr
 import m17.address
 
 
-
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 class msgtype(enum.Enum):
     i_am_here  = 1 #remote host asks to tie their host and callsign together
