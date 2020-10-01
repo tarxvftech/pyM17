@@ -285,7 +285,7 @@ class m17_networking_dht:
         t2 = asyncio.ensure_future(repeat(15, self.check))
 
     async def check(self):
-        async for c in ["","-M","-T","-F"]:
+        for c in ["","-M","-T","-F"]:
             call = "W2FBI" + c
             x = await self.node.get(call)
             print(call,x)
