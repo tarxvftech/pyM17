@@ -255,32 +255,23 @@ class m17_networking_dht:
     https://dsf.berkeley.edu/papers/sigcomm05-placelab.pdf
     https://cs.baylor.edu/~donahoo/papers/MCD15.pdf
     """
-    def __init__(self, callsign, myhost, boot=True):
+    def __init__(self, callsign, myhost, should_boot=True):
         self.callsign = callsign
         self.host = myhost
         self.port = 17001
-        node = Server()
-        self.node = node
-        def asiolo(self):
-            self.loop = asyncio.get_event_loop()
-            self.loop.set_debug(True)
-            self.loop.run_forever()
-        self.looper = threading.Thread(target=asiolo, args=(self,))
-        self.looper.start()
-        async def startup():
-            await node.listen(self.port)
-            if boot:
-                await node.bootstrap([
-                    ("m17dhtboot0.tarxvf.tech", 17001),
-                    # ("m17dhtboot1.tarxvf.tech", 17001)
-                    ])
-            await self.register_me()
-            for c in ["","-M","-T","-F"]:
-                call = "W2FBI"+c
-                x = await self.node.get(call)
-                print("got ", call, " : ", x)
+        self.should_boot = should_boot
+        self.node = Server()
 
-        asyncio.run( startup() )
+    async def run(self):
+        await self.node.listen(self.port)
+        if self.should_boot:
+            await self.node.bootstrap([
+                ("m17dhtboot0.tarxvf.tech", 17001),
+                # ("m17dhtboot1.tarxvf.tech", 17001)
+                ])
+            await self.register_me()
+            await self.node.get(self.callsign)
+
         
     async def register_me(self):
         me = [self.host,self.port]
@@ -321,10 +312,15 @@ if __name__ == "__main__":
         callsign = sys.argv[2]
         host = sys.argv[3] 
         #curl ident.me, or should check with dht bootstrapping nodes
-
         should_boot = bool(sys.argv[4].lower() in ["true","yes","1"])
+        loop = asyncio.get_event_loop()
+        loop.set_debug(True)
+        print("going!")
         x= m17_networking_dht(callsign,host,should_boot)
-        import pdb; pdb.set_trace()
+        print("going!")
+        loop.run_forever()
+
+        # asyncio.run(x.run())
 
     else:
         primaries = [("m17.programradios.com.",17000)]
