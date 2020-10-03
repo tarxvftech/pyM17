@@ -244,6 +244,15 @@ class m17_networking_dht:
     DHT multicast for reflectors in general
     So unicast comes into reflector, who then broadcasts it back out...
 
+    handhelds should not need to run a DHT.
+    DHT and other p2p stuff should be for servers, reflectors, etc - infrastructure
+    handhelds and clients are not infrastructure. 
+    They should be able to join through any node in the network.
+    one way to handle that would be to have the bootstrap node(s) also
+    be DNS servers, where when you ask for a record it returns the result
+    over DNS (and assume well-known ports), enabling compatibility with non-DHT applications?
+
+
     http://www.cs.columbia.edu/~jae/papers/bootstrap-paper-v3.2-icc11-camera.pdf
     borg https://engineering.purdue.edu/~ychu/publications/borg.pdf
     bayeux https://apps.dtic.mil/sti/pdfs/ADA603200.pdf
@@ -266,6 +275,13 @@ class m17_networking_dht:
     https://pdos.csail.mit.edu/~jinyang/pub/nsdi04.pdf
     https://dsf.berkeley.edu/papers/sigcomm05-placelab.pdf
     https://cs.baylor.edu/~donahoo/papers/MCD15.pdf
+    https://github.com/ipfs/specs/blob/master/ARCHITECTURE.md
+    http://www.cs.umd.edu/class/fall2015/cmsc417-0201/public/assignments/5.pdf
+    http://citeseerx.ist.psu.edu/viewdoc/download?rep=rep1&type=pdf&doi=10.1.1.218.6222
+    https://pdos.csail.mit.edu/~jinyang/pub/nsdi04.pdf
+    https://dsf.berkeley.edu/papers/sigcomm05-placelab.pdf
+    https://cs.baylor.edu/~donahoo/papers/MCD15.pdf
+
     """
     def __init__(self, callsign, myhost, should_boot=True):
         self.callsign = callsign
@@ -295,7 +311,7 @@ class m17_networking_dht:
         me = [self.host,self.port]
         jme = json.dumps(me)
         await self.node.set( self.callsign, jme)
-        await self.node.set( jme , self.callsign )
+        await self.node.set( jme , self.callsign)
 
 if __name__ == "__main__":
     def loop_once(loop):
