@@ -124,19 +124,19 @@ def _echolink_bridge():
     config = default_config(mode)
     modular(config, [tx_chain, rx_chain])
 
-def m17_to_echolink(port=default_port, echolink_host="pidp8i",echolink_audio_in_port=55500):
+def m17_to_echolink(port=default_port, echolink_host="localhost",echolink_audio_in_port=55500):
     """
     decode and bridge m17 packets to echolink
     (useful for interopability testing)
     """
     m17_to_echolink = [
-            udp_recv(port), tee("rx"), 
+            udp_recv(port), 
             m17parse, payload2codec2, codec2dec, 
             integer_interpolate(2), #echolink wants 16k audio
             udp_send((echolink_host,echolink_audio_in_port)) 
             ]
     config = default_config(mode)
-    config.verbose = 1
+    config.verbose = 0
     modular(config, [m17_to_echolink])
 
 def _test_chains_example():
