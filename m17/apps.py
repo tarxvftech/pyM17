@@ -125,6 +125,9 @@ def _echolink_bridge():
     modular(config, [tx_chain, rx_chain])
 
 def m17_to_echolink(port=default_port, echolink_host="localhost",mode=3200, echolink_audio_in_port=55500):
+    port=int(port)
+    mode=int(mode)
+    echolink_audio_in_port=int(echolink_audio_in_port)
     """
     decode and bridge m17 packets to echolink
     (useful for interopability testing)
