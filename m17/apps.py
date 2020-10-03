@@ -129,7 +129,7 @@ def m17_to_echolink(port=default_port, echolink_host="localhost",echolink_audio_
     decode and bridge m17 packets to echolink
     (useful for interopability testing)
     """
-    m17_to_echolink = [
+    chain = [
             udp_recv(port), 
             m17parse, payload2codec2, codec2dec, 
             integer_interpolate(2), #echolink wants 16k audio
@@ -137,7 +137,7 @@ def m17_to_echolink(port=default_port, echolink_host="localhost",echolink_audio_
             ]
     config = default_config(mode)
     config.verbose = 0
-    modular(config, [m17_to_echolink])
+    modular(config, [chain])
 
 def _test_chains_example():
     """
