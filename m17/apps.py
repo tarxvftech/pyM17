@@ -3,6 +3,7 @@ import sys
 import time
 import queue
 import socket
+import unittest
 import binascii
 import multiprocessing
 
@@ -29,6 +30,68 @@ def default_config(c2_mode):
             },
         })
     return config
+
+
+def m17_parrot(refcallsign, port=default_port):
+    #A parrot service for M17 - it's a full client that records and plays back after incoming stream is over PTT is released
+    port=int(port)
+    # udp_recv and udp_send are needed here, too.
+    ...
+
+def m17_mirror(refcallsign, port=default_port):
+    #reflects your M17 stream back to you after decoding and encoding
+    #can be useful for later transformations, like testing voice stream compatibilites
+    port=int(port)
+    # udp_recv and udp_send are needed here, too.
+    ...
+
+def udp_mirror(refcallsign, port=default_port):
+    # reflects your own UDP packets back to you after a delay
+    port=int(port)
+
+    pkts = {}
+    def packet_handler(sock, active_connections, bs, conn):
+        if conn not in pkts:
+            pkts[ conn ] = dattr({ "packets":[], "lastseen":time.time()})
+        else:
+            this = pkts[conn]
+            pkts[conn].packets.append( (time.time()-this.lastseen, bs ) )
+            pkts[conn].lastseen = time.time()
+    def timer(sock):
+        def replay(conn,packets):
+            for reltime,bs in packets:
+                time.sleep(reltime)
+                sock.sendto( bs, conn) 
+        delthese = []
+        for conn in pkts:
+            if pkts[conn].lastseen + 10 < time.time():
+                #as udp_server is written, this will stop us from recvfrom - and that's okay for now
+                #if we have multiple users, we may well timeout on several in a row because of the delays we're seeing here
+                #what i wish i had was a setTimeout like in JS, but I'm sure I can do something with asyncio later to get what I want (and actually support multiple udp_mirror users
+                replay(conn, pkts[conn].packets) 
+                delthese.append(conn) 
+        for conn in delthese:
+            del pkts[conn]
+    srv = udp_server(port, packet_handler, timer)
+    srv()
+
+def udp_reflector(refcallsign, port=default_port):
+    # "Reflects" an incoming stream to all connected users.
+    # ✔ So first, we need a way to receive connections and keep track of them, right?
+    # We also have our own callsign, but we'll deal with that later.
+
+    port=int(port)
+    def packet_handler(sock, active_connections, bs, conn):
+        others = [c for c in active_connections.keys() if c != conn]
+        for c in others:
+            sock.sendto(bs, c)
+    srv = udp_server(port, packet_handler)
+    srv()
+
+class test_udp_server(unittest.TestCase):
+    def test_sockets():
+        ...
+
 
 def voipsim(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=default_port):
     mode=int(mode) #so we can call modular_client straight from command line

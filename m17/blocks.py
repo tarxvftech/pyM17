@@ -13,6 +13,36 @@ from .blocks import *
 
 import numpy
 
+def codeblock(callback):
+    def fn(config, inq, outq):
+        while 1:
+            x = inq.get()
+            y = callback(x)
+            outq.put(y)
+    return fn
+
+def udp_server( port, packet_handler, occasional=None ):
+    """
+    not meant to be used in a chain
+    """
+    def fn():  #but still has a closure to allow running it as a process
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("0.0.0.0", port))
+        sock.setblocking(False)
+        active_connections = {}
+        timeout = 30
+        while 1:
+            active_connections = {k:v for k,v in active_connections.items() if v + timeout < time.time()}
+            try:
+                bs, conn = sock.recvfrom( 1500 ) 
+                active_connections[ conn ] = time.time() 
+                packet_handler(sock, active_connections, bs, conn)
+            except BlockingIOError as e:
+                pass
+            occasional(sock)
+            time.sleep(.001)
+    return fn
+
 def zeros(size, dtype, rate):
     def fn(config, inq, outq):
         while 1:
@@ -31,6 +61,7 @@ def null(config, inq, outq):
     """
     while 1:
         x = inq.get()
+
 
 def tee(header):
     """
@@ -318,6 +349,7 @@ def udp_recv(port):
     """
     Receive UDP datagram payloads as bytes and output them to outq
     Maintains UDP datagram separation on the q
+    Does not allow for responding to incoming packets. See udp_server for that.
     """
     def fn(config,inq,outq):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

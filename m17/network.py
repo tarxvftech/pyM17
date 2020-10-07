@@ -22,16 +22,33 @@ import m17.misc
 from m17.misc import dattr
 import m17.address
 
+import requests
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
+
+primaries = [("m17.tarxvf.tech.",17000)]
+dhtbootstraps = [("m17dhtboot0.tarxvf.tech.", 17001)]
+
 class msgtype(enum.Enum):
+    where_am_i  = 0 #remote host asks what their public IP is
     i_am_here  = 1 #remote host asks to tie their host and callsign together
     where_is = 2 #getting a query for a stored callsign
     is_at = 3 #getting a reply to a query
     introduce_me = 4 #got a request: please introduce me to host, i'm trying to talk to them on port...
     introducing = 5 #got an intro: I have an introduction for you, please contact ...
     hi = 6 #got an "oh hey" packet
+
+def getmyexternalip():
+    # from requests import get
+    # ip = get('https://api.ipify.org').text
+    # ip = get('https://ident.me').text
+    #or talk to bootstrap host
+    # or https://stackoverflow.com/a/41385033
+    # or https://checkip.amazonaws.com
+    # or http://myip.dnsomatic.com
+    return ip
+
 
 class m17_networking_direct:
     def __init__(self, primaries, callsign, port=17000):
@@ -112,7 +129,9 @@ class m17_networking_direct:
             #voice and data packets
         elif payload.startswith(b"M17J"): #M17 Json development and evaluation protocol - the standard is, there is no standard
             msg = dattr(json.loads(payload[4:].decode("utf-8")))
-            if msg.msgtype == msgtype.i_am_here: 
+            if msg.msgtype == msgtype.where_am_i: 
+                self.reg_store(msg.callsign, conn) #so we store it
+            elif msg.msgtype == msgtype.i_am_here: 
                 self.reg_store(msg.callsign, conn) #so we store it
             elif msg.msgtype == msgtype.where_is:
                 lastseen,theirconn = self.reg_fetch( callsign )
@@ -158,6 +177,7 @@ class m17_networking_direct:
 
     def reg_fetch_by_callsign( self, callsign ):
         return self.whereis[callsign]
+
     def reg_fetch_by_conn( self, conn ):
         return self.whereis[conn]
 
@@ -218,6 +238,7 @@ class m17_networking_direct:
                 return False
         #TODO now start the auto-keepalives here
         return True
+
 async def repeat(interval, func, *args, **kwargs):
     """Run func every interval seconds.
 
@@ -225,12 +246,14 @@ async def repeat(interval, func, *args, **kwargs):
     immediately when the previous iteration finished.
 
     *args and **kwargs are passed as the arguments to func.
+    https://stackoverflow.com/a/55505152
     """
     while True:
         await asyncio.gather(
             func(*args, **kwargs),
             asyncio.sleep(interval),
         )
+
 class m17_networking_dht:
     """
     https://github.com/bmuller/kademlia
@@ -283,10 +306,10 @@ class m17_networking_dht:
     https://cs.baylor.edu/~donahoo/papers/MCD15.pdf
 
     """
-    def __init__(self, callsign, myhost, should_boot=True):
+    def __init__(self, callsign, myhost, port, should_boot=True):
         self.callsign = callsign
         self.host = myhost
-        self.port = 17001
+        self.port = port
         self.should_boot = should_boot
         self.node = Server()
 
@@ -305,7 +328,6 @@ class m17_networking_dht:
             call = "W2FBI" + c
             x = await self.node.get(call)
             print(call,x)
-
         
     async def register_me(self):
         me = [self.host,self.port]
