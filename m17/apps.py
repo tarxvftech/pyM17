@@ -67,7 +67,7 @@ def udp_mirror(refcallsign, port=default_port):
             if pkts[conn].lastseen + 10 < time.time():
                 #as udp_server is written, this will stop us from recvfrom - and that's okay for now
                 #if we have multiple users, we may well timeout on several in a row because of the delays we're seeing here
-                #what i wish i had was a setTimeout like in JS, but I'm sure I can do something with asyncio later to get what I want (and actually support multiple udp_mirror users
+                #what i wish i had was a setTimeout like in JS, but I'm sure I can do something with asyncio later to get what I want (and actually support multiple udp_mirror users)
                 replay(conn, pkts[conn].packets) 
                 delthese.append(conn) 
         for conn in delthese:

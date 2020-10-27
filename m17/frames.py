@@ -16,6 +16,7 @@ class initialLICH:
         48b  Address src
         16b  int(M17_streamtype)
         112b nonce (for encryption)
+        #if actually sent on RF, needs a 16bit CRC also
     """
     sz = int((48+48+16+112)/8)
     def __init__(self, 
@@ -154,7 +155,7 @@ class ipFrame(regularFrame):
     """
     32b "M17 " 
     16b  StreamID
-    ?    Full LICH bytes
+    ?    Full LICH bytes (minus CRC)
     16b  Frame number counter
     128b payload
     16b  CRC-16 chksum
