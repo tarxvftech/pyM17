@@ -30,6 +30,44 @@ logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 primaries = [("m17.tarxvf.tech.",17000)]
 dhtbootstraps = [("m17dhtboot0.tarxvf.tech.", 17001)]
 
+def dox():
+    x = n7tae_reflector_conn("W2FBI-P","192.168.170.190",17000)
+    return x
+
+
+class n7tae_reflector_conn:
+    def __init__(self, callsign, host, port):
+        self.callsign = callsign
+        self.host = host
+        self.port = port
+        self.conn = (self.host,self.port)
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.bind( ("0.0.0.0", 17000) )
+        self.mycall_b = bytes(m17.address.Address(callsign="ABCDEF"))
+
+    def connect(self):
+        data = b"CONN" + self.mycall_b + b"A"
+        self.send(data)
+
+    def pong(self):
+        data = b"PONG" + self.mycall_b + b"A"
+        self.send(data)
+
+    def disco(self):
+        data = b"DISC" + self.mycall_b 
+        self.send(data)
+
+    def send(self,data):
+        self.sock.sendto(data,self.conn)
+
+    def recv(self):
+        data,conn = self.sock.recvfrom(1500)
+        print(data,conn)
+        return data,conn
+
+
+
+
 class msgtype(enum.Enum):
     where_am_i  = 0 #remote host asks what their public IP is
     i_am_here  = 1 #remote host asks to tie their host and callsign together
