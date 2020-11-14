@@ -50,6 +50,9 @@ def zeros(size, dtype, rate):
             time.sleep(1/rate)
     return fn
 
+def mref_client():
+    ...
+
 def null(config, inq, outq):
     """
     Don't do nuffin.

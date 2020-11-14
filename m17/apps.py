@@ -127,7 +127,7 @@ def recv_dump(mode=3200,port=default_port):
     config = default_config(mode)
     modular(config, [rx_chain])
 
-def voip(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=default_port, voipmode="full"):
+def voip(host="localhost",port=default_port,voipmode="full",mode=3200,src="W2FBI",dst="SP5WWP"):
     mode=int(mode) #so we can call modular_client straight from command line
     port=int(port)
 
@@ -187,20 +187,23 @@ def _echolink_bridge():
     config = default_config(mode)
     modular(config, [tx_chain, rx_chain])
 
-def m17_to_echolink(port=default_port, echolink_host="pidp8i",echolink_audio_in_port=55500):
+def m17_to_echolink(port=default_port, echolink_host="localhost",mode=3200, echolink_audio_in_port=55500):
+    port=int(port)
+    mode=int(mode)
+    echolink_audio_in_port=int(echolink_audio_in_port)
     """
     decode and bridge m17 packets to echolink
     (useful for interopability testing)
     """
-    m17_to_echolink = [
-            udp_recv(port), tee("rx"), 
+    chain = [
+            udp_recv(port), 
             m17parse, payload2codec2, codec2dec, 
             integer_interpolate(2), #echolink wants 16k audio
             udp_send((echolink_host,echolink_audio_in_port)) 
             ]
     config = default_config(mode)
-    config.verbose = 1
-    modular(config, [m17_to_echolink])
+    config.verbose = 0
+    modular(config, [chain])
 
 def _test_chains_example():
     """
