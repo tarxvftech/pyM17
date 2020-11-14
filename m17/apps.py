@@ -64,7 +64,7 @@ def recv_dump(mode=3200,port=default_port):
     config = default_config(mode)
     modular(config, [rx_chain])
 
-def voip(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=default_port, voipmode="full"):
+def voip(host="localhost",port=default_port,voipmode="full",mode=3200,src="W2FBI",dst="SP5WWP"):
     mode=int(mode) #so we can call modular_client straight from command line
     port=int(port)
 
