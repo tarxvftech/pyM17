@@ -30,40 +30,46 @@ logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 primaries = [("m17.tarxvf.tech.",17000)]
 dhtbootstraps = [("m17dhtboot0.tarxvf.tech.", 17001)]
 
-def dox():
-    x = n7tae_reflector_conn("W2FBI-P","192.168.170.190",17000)
-    return x
+def m17ref_name2host(refname):
+    return "%s.m17ref.tarxvf.tech"%(refname)
 
+# def m17ref_name2dict(refname):
+    # return "%s.m17ref.tarxvf.tech"%(refname)
 
 class n7tae_reflector_conn:
-    def __init__(self, callsign, host, port):
-        self.callsign = callsign
-        self.host = host
-        self.port = port
-        self.conn = (self.host,self.port)
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.bind( ("0.0.0.0", 17000) )
-        self.mycall_b = bytes(m17.address.Address(callsign="ABCDEF"))
-
+    def __init__(self, sock, conn, mycallsign, theirmodule="A"):
+        self.module = theirmodule
+        self.sock = sock
+        self.conn = conn
+        self.mycallsign=mycallsign
+        self.mycall_b = bytes(m17.address.Address(callsign=self.mycallsign))
+        print("MYCALL=%s"%(self.mycallsign))
     def connect(self):
-        data = b"CONN" + self.mycall_b + b"A"
+        data = b"CONN" + self.mycall_b + self.module.encode("ascii")
         self.send(data)
-
     def pong(self):
-        data = b"PONG" + self.mycall_b + b"A"
+        data = b"PONG" + self.mycall_b 
         self.send(data)
-
     def disco(self):
         data = b"DISC" + self.mycall_b 
         self.send(data)
-
     def send(self,data):
+        print("TAE SEND:",data)
         self.sock.sendto(data,self.conn)
+    def handle(self,pkt,conn):
+        if pkt.startswith(b"PING"):
+            self.pong()
+        elif pkt.startswith(b"ACKN"):
+            pass #everything's fine
+        elif pkt.startswith(b"NACK"):
+            self.disco()
+            raise(Exception("Refused by reflector"))
+        elif pkt.startswith(b"CONN"):
+            raise(NotImplementedError)
+        else:
+            print(pkt)
+            raise(NotImplementedError)
 
-    def recv(self):
-        data,conn = self.sock.recvfrom(1500)
-        print(data,conn)
-        return data,conn
 
 
 
@@ -77,15 +83,15 @@ class msgtype(enum.Enum):
     introducing = 5 #got an intro: I have an introduction for you, please contact ...
     hi = 6 #got an "oh hey" packet
 
-def getmyexternalip():
-    # from requests import get
-    # ip = get('https://api.ipify.org').text
-    # ip = get('https://ident.me').text
-    #or talk to bootstrap host
-    # or https://stackoverflow.com/a/41385033
-    # or https://checkip.amazonaws.com
-    # or http://myip.dnsomatic.com
-    return ip
+# def getmyexternalip():
+    # # from requests import get
+    # # ip = get('https://api.ipify.org').text
+    # # ip = get('https://ident.me').text
+    # #or talk to bootstrap host
+    # # or https://stackoverflow.com/a/41385033
+    # # or https://checkip.amazonaws.com
+    # # or http://myip.dnsomatic.com
+    # return ip
 
 
 class m17_networking_direct:

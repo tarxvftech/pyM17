@@ -10,6 +10,7 @@ import multiprocessing
 from .const import *
 from .misc import example_bytes,_x,chunk,dattr
 from .blocks import *
+import m17.network as network
 
 def default_config(c2_mode):
     c2,conrate,bitframe = codec2setup(c2_mode)
@@ -88,10 +89,27 @@ def udp_reflector(refcallsign, port=default_port):
     srv = udp_server(port, packet_handler)
     srv()
 
-class test_udp_server(unittest.TestCase):
-    def test_sockets():
-        ...
 
+def m17ref_client(mycall,mymodule,refname,module,port=default_port,mode=3200):
+    mode=int(mode) #so we can call modular_client straight from command line
+    port=int(port)
+    if( refname.startswith("M17-") and len(refname) <= 7 ):
+        #should also be able to look up registered port in dns
+        host = network.m17ref_name2host(refname)
+        print(host)
+        #fallback to fetching json if its not in dns already
+    else:
+        raise(NotImplementedError)
+    myrefmod = "%s %s"%(mycall,mymodule)
+    c = m17ref_client_blocks(myrefmod,module,host,port)
+    tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, c.sender()]
+    rx_chain = [c.receiver(), m17parse, payload2codec2, codec2dec, spkr_audio]
+    config = default_config(mode)
+    config.m17.dst = "%s %s"%(refname,module)
+    config.m17.src = mycall
+    print(config)
+    c.start()
+    modular(config, [tx_chain, rx_chain])
 
 def voipsim(host="localhost",src="W2FBI",dst="SP5WWP",mode=3200,port=default_port):
     mode=int(mode) #so we can call modular_client straight from command line

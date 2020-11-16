@@ -3,6 +3,8 @@ import sys
 import time
 import queue
 import socket
+import random
+import multiprocessing
 
 from .address import Address
 from .frames import ipFrame
@@ -10,6 +12,7 @@ from .framer import M17_IPFramer
 from .const import *
 from .misc import example_bytes,_x,chunk,dattr
 from .blocks import *
+import m17.network as network
 
 import numpy
 
@@ -50,8 +53,70 @@ def zeros(size, dtype, rate):
             time.sleep(1/rate)
     return fn
 
-def mref_client():
-    ...
+class m17ref_client_blocks:
+    def __init__(self, mycall, theirmodule, host, port):
+        self.mycall = mycall
+        self.theirmodule = theirmodule
+        self.host = host
+        self.port = port
+        self.qs = {}
+
+    def start(self):
+        process = multiprocessing.Process(name="m17ref_client_blocks", target=self.proc, args=(self.qs,self.mycall,self.theirmodule,self.host,self.port))
+        process.start()
+
+    def proc(self, qs, mycall,theirmodule, host,port):
+        """
+        the shared process that handles the socket
+        """
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("0.0.0.0", random.randint(17010,17100)))
+        sock.setblocking(False)
+        timeout = .1
+        sendq = qs["send"]
+        recvq = qs["recv"]
+        conn = (host, port)
+        refcon = network.n7tae_reflector_conn(sock,conn,mycall,theirmodule)
+        refcon.connect()
+        while 1:
+            try:
+                bs, conn = sock.recvfrom( 1500 ) 
+                print("RECV",bs)
+                if bs.startswith(b"M17 "):
+                    recvq.put( bs ) #could also hand conn along later
+                else:
+                    refcon.handle(bs,conn)
+            except BlockingIOError as e:
+                pass
+            if not sendq.empty():
+                data= sendq.get_nowait()
+                print("SEND",data)
+                sock.sendto(data,conn)
+            time.sleep(.000001)
+
+    def probe(self, name, direction):
+        """
+        processes that can sample inputs and outputs
+        direction describes the path of elements from fn - 
+        e.g. if it's being used only to generate packets, the direction is "out"
+        if it's being used to terminate a processing stream, the direction is "in"
+        """
+        self.qs[name] = multiprocessing.Queue()
+        def fn(config,inq,outq):
+            while 1:
+                if direction == "in":
+                    self.qs[name].put(inq.get())
+                elif direction == "out":
+                    outq.put(self.qs[name].get())
+                time.sleep(.000001)
+        return fn
+
+    def receiver(self):
+        return self.probe("recv", "out")
+
+    def sender(self):
+        return self.probe("send", "in")
+
 
 def null(config, inq, outq):
     """
@@ -262,6 +327,7 @@ def m17frame(config,inq,outq):
     print(dst)
     print(src)
     framer = M17_IPFramer(
+            streamid=random.randint(1,2**16-1),
             dst=dst,
             src=src,
             streamtype=5, #TODO need to set this based on codec2 settings too to support c2.1600
