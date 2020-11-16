@@ -185,8 +185,8 @@ def echolink_bridge(mycall,mymodule,refname,refmodule,refport=default_port,mode=
         raise(NotImplementedError)
     myrefmod = "%s %s"%(mycall,mymodule)
     c = m17ref_client_blocks(myrefmod,refmodule,host,refport)
-    echolink_bridge_in = [udp_recv(55501), chunker_b(640), np_convert("<h"), integer_decimate(2), codec2enc, m17frame, tobytes, to_ref]
-    m17_to_echolink = [ from_ref, m17parse, payload2codec2, codec2dec, integer_interpolate(2), udp_send(("127.0.0.1",55500)) ]
+    echolink_to_m17ref = [udp_recv(55501), chunker_b(640), np_convert("<h"), integer_decimate(2), codec2enc, m17frame, tobytes, c.sender()]
+    m17ref_to_echolink = [ c.receiver(), m17parse, payload2codec2, codec2dec, integer_interpolate(2), udp_send(("127.0.0.1",55500)) ]
     config = default_config(mode)
     config.m17.dst = "%s %s"%(refname,refmodule)
     config.m17.src = mycall
