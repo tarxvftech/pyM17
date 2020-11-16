@@ -15,7 +15,9 @@ VERSION = '0.0.13'
 
 REQUIRED=[
         "bitstruct",
-        "wheel"
+        "wheel",
+        "kademlia",
+        "requests"
         ]
 
 this_directory = path.abspath(path.dirname(__file__))
