@@ -175,7 +175,7 @@ def voip(host="localhost",port=default_port,voipmode="full",mode=3200,src="W2FBI
 
 def echolink_bridge(mycall,mymodule,refname,refmodule,refport=default_port,mode=3200):
     mode=int(mode) #so we can call modular_client straight from command line
-    refport=int(port)
+    refport=int(refport)
     if( refname.startswith("M17-") and len(refname) <= 7 ):
         #should also be able to look up registered port in dns
         host = network.m17ref_name2host(refname)
@@ -192,7 +192,7 @@ def echolink_bridge(mycall,mymodule,refname,refmodule,refport=default_port,mode=
     config.m17.src = mycall
     print(config)
     c.start()
-    modular(config, [tx_chain, rx_chain])
+    modular(config, [echolink_to_m17ref, m17ref_to_echolink])
 
 def m17_to_echolink(port=default_port, echolink_host="localhost",mode=3200, echolink_audio_in_port=55500):
     port=int(port)
