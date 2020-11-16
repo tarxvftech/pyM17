@@ -173,36 +173,25 @@ def voip(host="localhost",port=default_port,voipmode="full",mode=3200,src="W2FBI
 
     modular(config, [tx_chain, rx_chain])
 
-def _echolink_bridge():
-    #this is incomplete, and must remain so until a proper reflector enters the picture
-    #it's here mostly to save it for later
-    echolink_bridge_in = [udp_recv(55501), chunker_b(640), np_convert("<h"), integer_decimate(2), codec2enc, m17frame, tobytes, udp_send((host,port)) ]
-    m17_to_echolink = [
-            udp_recv(17000), tee("rx"), 
-            m17parse, payload2codec2, codec2dec, 
-            integer_interpolate(2),
-            udp_send(("pidp8i",55500)) 
-            ]
-    echolink_bridge_monitor = [
-                udp_recv(55501), 
-                chunker_b(640), 
-                np_convert("<h"), 
-                integer_decimate(2), 
-                codec2enc, 
-                tee("RX"),
-                m17frame, tobytes,
-                m17parse,payload2codec2, 
-                tee("RX"),
-                codec2dec, 
-                spkr_audio
-                ]
-    echolink_bridge_out = [
-            mic_audio, codec2enc, vox, m17frame, tobytes, 
-            m17parse, payload2codec2, codec2dec, 
-            integer_interpolate(2),
-            udp_send(("pidp8i",55500)) 
-            ]
+def echolink_bridge(mycall,mymodule,refname,refmodule,refport=default_port,mode=3200):
+    mode=int(mode) #so we can call modular_client straight from command line
+    refport=int(port)
+    if( refname.startswith("M17-") and len(refname) <= 7 ):
+        #should also be able to look up registered port in dns
+        host = network.m17ref_name2host(refname)
+        print(host)
+        #fallback to fetching json if its not in dns already
+    else:
+        raise(NotImplementedError)
+    myrefmod = "%s %s"%(mycall,mymodule)
+    c = m17ref_client_blocks(myrefmod,refmodule,host,refport)
+    echolink_bridge_in = [udp_recv(55501), chunker_b(640), np_convert("<h"), integer_decimate(2), codec2enc, m17frame, tobytes, to_ref]
+    m17_to_echolink = [ from_ref, m17parse, payload2codec2, codec2dec, integer_interpolate(2), udp_send(("127.0.0.1",55500)) ]
     config = default_config(mode)
+    config.m17.dst = "%s %s"%(refname,refmodule)
+    config.m17.src = mycall
+    print(config)
+    c.start()
     modular(config, [tx_chain, rx_chain])
 
 def m17_to_echolink(port=default_port, echolink_host="localhost",mode=3200, echolink_audio_in_port=55500):
