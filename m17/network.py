@@ -49,7 +49,7 @@ class n7tae_reflector_base:
         #   or maybe key is a callsign? i like that better - except that can't work because we'll just end up looking up the call from the conn pair anyway!
 
         #implementations must also have self.sendq and self.recvq queues appropriate for threading or multiprocessing or whatever
-        #recvq is packets received from the socket we need to handle in the service
+        #recvq is packets received from the socket
         #sendq is packets to be sent out from our service
 
     def add_connection(self, call, conn, prot):
@@ -71,7 +71,7 @@ class n7tae_reflector_protocol:
     """
 
     Requires an M17 callsign, 
-    an active socket (sock), with a peer (udpconn), and a parent (service)
+    a peer (udpconn) which is "0.0.0.0" and a port when a server, and a parent (service)
     the service parameter currently needs to implement:
         service.add_connection(call, conn, protocol) (where protocol is an instance of n7tae_reflector_protocol, so pass self)
         service.del_connection(conn) 
@@ -84,8 +84,12 @@ class n7tae_reflector_protocol:
         self.mycallsign=mycallsign
         self.mycall_b = bytes(m17.address.Address(callsign=self.mycallsign))
         self.udpconn = udpconn
-        self.sock = sock
         self.service = service #parent, usually a reflector or client
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.bind(udpconn)
+        self.sock.setblocking(False)
+
+
         if mode=="server":
             ...
 
@@ -156,7 +160,7 @@ class n7tae_reflector_protocol:
             self.pong()
         if pkt.startswith(b"PONG"):
             self.last_recv_pongtime = time.time()
-            self.pong()
+            # self.pong()
         elif pkt.startswith(b"ACKN"):
             pass
         elif pkt.startswith(b"NACK"):
@@ -165,9 +169,9 @@ class n7tae_reflector_protocol:
 
             raise(Exception("Refused by reflector"))
         elif pkt.startswith(b"CONN"):
-            self.connect_in( pkt[4:])
+            return self.connect_in( pkt[4:])
         elif pkt.startswith(b"DISC"):
-            self.handle_disc( pkt[4:])
+            return self.handle_disc( pkt[4:])
         else:
             assert pkt[:4] == b"M17 "
             ...
@@ -211,20 +215,13 @@ class simple_n7tae_reflector(n7tae_reflector_base):
     def server(self, sendq, recvq, connections, mycall, host,port):
         """
         """
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         srv_conn = (host, port)
-        print(srv_conn)
-        sock.bind(srv_conn)
-        sock.setblocking(False)
-        prot = n7tae_reflector_protocol(mycall, srv_conn, sock, service=self, mode="server")
+        prot = n7tae_reflector_protocol(mycall, srv_conn, service=self, mode="server")
         while 1:
             try:
-                bs, clientconn = sock.recvfrom( 1500 ) 
-                remainder = prot.handle( bs, clientconn, sock)
-                if remainder:
-                    print(remainder)
-                    # pktmagic, pkt, _, _ = remainder
-                    # recvq.put( (pktmagic, pkt, clientconn) )
+                _ = prot.recv()
+                # pktmagic, pkt, _, _ = remainder
+                # recvq.put( (pktmagic, pkt, clientconn) )
                 # if bs.startswith(b"M17 "):
                     # recvq.put( (bs,clientconn) ) #could also hand conn along later
             except BlockingIOError as e:
