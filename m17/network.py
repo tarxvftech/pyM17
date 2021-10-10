@@ -80,7 +80,7 @@ class n7tae_reflector_protocol:
 
     Can be subclassed to override send() for other protocols i guess
     """
-    def __init__(self, mycallsign, udpconn, sock, service, mode="client"):
+    def __init__(self, mycallsign, udpconn, service, mode="client"):
         self.mycallsign=mycallsign
         self.mycall_b = bytes(m17.address.Address(callsign=self.mycallsign))
         self.udpconn = udpconn
