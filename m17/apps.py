@@ -99,7 +99,9 @@ def m17ref_client(mycall,mymodule,refname,module,port=default_port,mode=3200):
         print(host)
         #fallback to fetching json if its not in dns already
     else:
-        raise(NotImplementedError)
+        host = "127.0.0.1"
+        print("not a valid ref, falling back to localhost")
+        # raise(NotImplementedError)
     myrefmod = "%s %s"%(mycall,mymodule)
     c = m17ref_client_blocks(myrefmod,module,host,port)
     tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, c.sender()]

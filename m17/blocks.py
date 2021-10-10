@@ -54,6 +54,9 @@ def zeros(size, dtype, rate):
     return fn
 
 class m17ref_client_blocks:
+    """
+    deprecated - keep only until better replacement is up and running
+    """
     def __init__(self, mycall, theirmodule, host, port):
         self.mycall = mycall
         self.theirmodule = theirmodule
@@ -218,8 +221,10 @@ def ptt(config, inq, outq):
     take elements off the inq (like audio frames) and only put them on the outq
     if the "push to talk" evaluates truthy.
 
-    Redo this to take a check function as a parameter and close around
+    TODO: Redo this to take a check function as a parameter and close around
     that instead of using config
+
+    TODO: This doesn't set or send EOT flags/frames.
     """
     while 1:
         x = inq.get()
@@ -232,6 +237,8 @@ def vox(config,inq,outq):
     a configurable threshold in a row, don't copy further duplicates
 
     This lets you use a microphone mute as a reverse PTT, among other things
+
+    TODO: This doesn't set or send EOT flags/frames.
     """
     last = None
     repeat_count = 0
