@@ -47,19 +47,23 @@ class n7tae_reflector_base:
         #   and 
         #   value is an instance of n7tae_reflector_protocol
         #   or maybe key is a callsign? i like that better - except that can't work because we'll just end up looking up the call from the conn pair anyway!
+        self.connections = {}
 
         #implementations must also have self.sendq and self.recvq queues appropriate for threading or multiprocessing or whatever
         #recvq is packets received from the socket
         #sendq is packets to be sent out from our service
 
     def add_connection(self, call, my_channel, conn, prot):
+        if conn in self.connections:
+            return False #already registered, NACK 'em
         new_connection = dattr({
-                call: call,
-                conn: conn,
-                chan: my_channel,
-                prot: prot
+                "call": call,
+                "conn": conn,
+                "chan": my_channel,
+                "prot": prot
                 })
         self.connections[conn] = new_connection
+        return True
 
     def del_connection(self, conn):
         del self.connections[conn]
@@ -115,6 +119,13 @@ class n7tae_reflector_protocol_base:
         self.send(data)
 
     def disco(self):
+        """
+        The official protocol assumes there's only one client per peer 
+        (ipv6 is a clear winner to avoid NAT then, eh?)
+        and only connected to one module at a time
+        which is why DISC doesn't have any way to specify _what_ to disconnect from
+        """
+
         print("DISC")
         data = b"DISC" + self.mycall_b 
         self.send(data)
@@ -132,7 +143,7 @@ class n7tae_reflector_protocol_base:
         # print("from: ", theircall, " for my module ",my_channel)
         return self.service.add_connection(theircall, my_channel, peer, self)
 
-    def handle_disc( pkt):
+    def handle_disc(self, pkt, peer):
         """
         pkt must not have the front magic bytes (4 bytes)
         so make sure to strip them (i.e. pass in pkt[4:] )
@@ -140,6 +151,7 @@ class n7tae_reflector_protocol_base:
         callsign_40 = pkt[:6]
         addr = int.from_bytes(callsign_40, 'big')
         theircall = m17.address.Address(addr=addr)
+        self.service.del_connection(peer)
         ...
 
     def pong(self, peer=None):
@@ -195,9 +207,11 @@ class n7tae_reflector_protocol_base:
             self.last_recv_pongtime = time.time()
             # self.pong()
         elif pkt.startswith(b"ACKN"):
-            
+            #successful connection, but as a client
+            # self.add_connection()
             pass
         elif pkt.startswith(b"NACK"):
+            #unsuccessful connection, as a client
             # self.disco()
             #do more than this, like disco, reconnect, etc
 
@@ -207,8 +221,8 @@ class n7tae_reflector_protocol_base:
                 self.ack(from_conn)
             else:
                 self.nack(from_conn)
-        # elif pkt.startswith(b"DISC"):
-            # return self.handle_disc( pkt[4:])
+        elif pkt.startswith(b"DISC"):
+            return self.handle_disc( pkt[4:], from_conn)
         else:
             print("unhandled")
             # assert pkt[:4] == b"M17 "
@@ -279,13 +293,6 @@ class simple_n7tae_reflector(n7tae_reflector_base):
                     continue
                 self.connections[conn].prot.send(pkt)
 
-class bare_service:
-    def __init__(self):
-        pass
-    def add_connection(self, callsign, my_channel, peer, protocol):
-        print("added", callsign, my_channel, peer, protocol)
-        return True
-
 class ReflectorProtocolTests(unittest.TestCase):
     def testPingPong(self):
         print("pingpong test")
@@ -300,14 +307,30 @@ class ReflectorProtocolTests(unittest.TestCase):
 
     def testConnect(self):
         print("connect test")
-        asrv = bare_service()
-        bsrv = bare_service()
+        asrv = n7tae_reflector_base("1")
+        a = n7tae_reflector_protocol_base("1", ("0.0.0.0",17000), asrv, mode="server")
+        b = n7tae_reflector_protocol_base("2", ("127.0.0.1",17000), None, mode="client")
+        # b.connect("1", ("127.0.0.1", 17000), "Z")
+        b.connect("Z")
+        a.recv() 
+        b.recv()
+        # self.assertTrue(b.is_connected("1","Z"))
+        # can't really have state without concurrency for this, eh :/
+        a.close()
+        b.close()
+        print("end connect")
+    def testDisco(self):
+        print("disco test")
+        asrv = n7tae_reflector_base("1")
+        bsrv = n7tae_reflector_base("2")
+        #don't worry, this weird split API isn't sticking around
         a = n7tae_reflector_protocol_base("1", ("0.0.0.0",17000), asrv, mode="server")
         b = n7tae_reflector_protocol_base("2", ("127.0.0.1",17000), bsrv, mode="client")
         # b.connect("1", ("127.0.0.1", 17000), "Z")
         b.connect("Z")
-        # self.assertTrue(b.is_connected("1","Z"))
-        # can't really have state without concurrency, really :/
+        a.recv() 
+        b.recv()
+        b.disco()
         a.recv() 
         b.recv()
         a.close()
