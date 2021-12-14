@@ -189,7 +189,7 @@ class n7tae_protocol:
     def send(self,  pkt, peer=None):
         if peer is None and self.peer is not None:
             peer = self.peer
-        self.log.debug("SEND %s: %s"%(peer, pkt))
+        # self.log.debug("SEND %s: %s"%(peer, pkt))
         self.sock.sendto(pkt, peer)
         self.times.send = time.time()
 
@@ -203,7 +203,7 @@ class n7tae_protocol:
 
 
     def handle(self, pkt, from_conn):
-        self.log.debug("RECV %s: %s"%(from_conn, pkt))
+        # self.log.debug("RECV %s: %s"%(from_conn, pkt))
         if pkt.startswith(b"PING"):
             self.times.last_recv_ping = time.time()
             self.pong(from_conn)
@@ -216,7 +216,7 @@ class n7tae_protocol:
             pass
         elif pkt.startswith(b"NACK"):
             #unsuccessful connection, as a client
-            # self.disco()
+            self.disco()
             #do more than this, like disco, reconnect, etc
             raise(Exception("Refused (NACK) by reflector"))
         elif pkt.startswith(b"CONN"):
@@ -227,7 +227,7 @@ class n7tae_protocol:
         elif pkt.startswith(b"DISC"):
             return self.handle_disc( pkt[4:], from_conn)
         elif pkt.startswith(b"M17 "):
-            # self.log.warning("M17 packet magic: %s"%(pkt[:4]))
+            self.log.warning("M17 packet magic: %s"%(pkt[:4]))
             return pkt, from_conn
         else:
             self.log.warning("unhandled packet magic: %s"%(pkt[:4]))
@@ -274,14 +274,14 @@ class simple_n7tae_client():
             try:
                 ret = prot.recv()
                 if ret:
-                    print("CLIENT:",ret)
+                    # print("CLIENT:",ret)
                     pkt, conn = ret
                     recvq.put( pkt ) 
             except BlockingIOError as e:
                 pass
             if not sendq.empty():
                 data = sendq.get_nowait()
-                print("SEND", data )
+                # print("SEND", data )
                 prot.send( data )
             time.sleep(.000001)
 

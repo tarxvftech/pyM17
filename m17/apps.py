@@ -40,8 +40,21 @@ def m17_parrot(refcallsign, port=default_port):
     #A parrot service for M17 - it's a full client that records and plays back after incoming stream is over PTT is released
     ...
 
-def stream_saver():
-    pass
+def stream_saver(mycall, refname,theirmodule):
+    port=17000
+    mymodule="T"
+    assert( refname.startswith("M17-") and len(refname) <= 7 )
+    #should also be able to look up registered port in dns at some point
+    host = network.m17ref_name2host(refname)
+    # print(host)
+
+    myrefmod = "%s %s"%(mycall,mymodule)
+    c = client_blocks(myrefmod,refname, theirmodule,peer=(host,port))
+    rx_chain = [c.receiver(), teefile('out.m17'), null ]
+    # rx_chain = [m17parse,... ]
+    config = {}
+    c.start()
+    modular(config, [rx_chain])
 
 def client(mycall,mymodule,refname,theirmodule,port=default_port,mode=3200):
     mode=int(mode) #so we can call modular_client straight from command line
@@ -56,7 +69,7 @@ def client(mycall,mymodule,refname,theirmodule,port=default_port,mode=3200):
         print("not a valid ref, falling back to localhost")
         # raise(NotImplementedError)
     myrefmod = "%s %s"%(mycall,mymodule)
-    c = client_blocks(myrefmod,theirmodule,host,port)
+    c = client_blocks(myrefmod,refname, theirmodule,peer=(host,port))
 
     tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, c.sender()]
     rx_chain = [c.receiver(), m17parse, payload2codec2, codec2dec, spkr_audio]

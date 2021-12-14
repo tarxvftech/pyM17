@@ -94,42 +94,36 @@ class client_blocks(TwoWayBlock):
                 "send":multiprocessing.Queue(),
                 "recv":multiprocessing.Queue(),
                 }
-        process = multiprocessing.Process(name="m17ref_client_blocks", 
+        self.process = multiprocessing.Process(name="m17ref_client_blocks", 
                 target=self.proc, 
                 args=(
                     self.qs,
                     mycall,
                     theirmodule,
-                    self.host,
-                    self.port
+                    bind, peer
                     )
                 )
 
     def start(self):
-        process.start()
+        self.process.start()
 
-    def proc(self, qs, mycall,theirmodule, host,port):
+    def proc(self, qs, mycall,theirmodule, bind, peer):
         """
         """
-        cli = simple_n7tae_client(mycall, bind, peer)
-        cli.connect(theirmodule) #need to handle disconnects and resubscribes
+        cli = network.simple_n7tae_client(mycall, bind, peer)
+        cli.connect(theirmodule) #need to handle disconnects and resubscribes in the client or protocol
+        #cli.sendq #(packets to send out)
+        #cli.recvq #(packets we've just received)
 
         sendq = qs["send"]
         recvq = qs["recv"]
         while 1:
-            try:
-                bs, conn = sock.recvfrom( 1500 ) 
-                print("RECV",bs)
-                if bs.startswith(b"M17 "):
-                    recvq.put( bs ) #could also hand conn along later
-                else:
-                    refcon.handle(bs,conn)
-            except BlockingIOError as e:
-                pass
+            x = cli.recv()
+            if x:
+                recvq.put(x)
             if not sendq.empty():
                 data= sendq.get_nowait()
-                print("SEND",data)
-                sock.sendto(data,conn)
+                sendq.put(data)
             time.sleep(.000001)
 
 
@@ -191,6 +185,7 @@ def teefile(filename):
     Same as tee, except assumes elements coming in are bytes, and writes
     them to a provided filename
     """
+    print("TEEFILE",filename)
     def fn(config, inq, outq):
         with open(filename,"wb") as fd:
             try:
@@ -200,6 +195,7 @@ def teefile(filename):
                     fd.flush()
                     outq.put(x)
             except:
+                print("Closing")
                 fd.close()
     return fn
 
@@ -374,6 +370,16 @@ def m17parse(config,inq,outq):
             print(f)
         outq.put(f)
 
+def m17frames2streams(config,inq,outq):
+    """
+    Batches up groups of parsed M17 frames (IP only for now) into streams.
+
+    Uses a timeout and end of stream markers to know when to flush a
+    stream to output.
+    """
+    while 1:
+        x = inq.get()
+        outq.put(x)
 
 def payload2codec2(config,inq,outq):
     """
