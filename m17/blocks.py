@@ -53,37 +53,69 @@ def zeros(size, dtype, rate):
             time.sleep(1/rate)
     return fn
 
-class m17ref_client_blocks:
-    """
-    deprecated - keep only until better replacement is up and running
-    """
-    def __init__(self, mycall, theirmodule, host, port):
+class TwoWayBlock:
+    def __init__(self):
+        self.qs = {}
+        raise(NotImplementedError)
+
+    def probe(self, name, direction):
+        """
+        processes that can sample inputs and outputs
+        direction describes the path of elements from fn - 
+        e.g. if it's being used only to generate packets, the direction is "out"
+        if it's being used to terminate a processing stream, the direction is "in"
+        """
+        # self.qs[name] = multiprocessing.Queue()
+        def fn(config,inq,outq):
+            while 1:
+                if direction == "in":
+                    self.qs[name].put(inq.get())
+                elif direction == "out":
+                    outq.put(self.qs[name].get())
+                time.sleep(.000001)
+        return fn
+    def receiver(self):
+        return self.probe("recv", "out")
+    def sender(self):
+        return self.probe("send", "in")
+
+def reflector(mycall, bind=("0.0.0.0",17000)):
+    # network.simple_n7tae_reflector(mycall, bind=bind) 
+    #exits immediately, so make sure to tell it to not daemonize the thread so it stays running
+    network.simple_n7tae_reflector(mycall, bind=bind, nodaemon=True)
+
+
+class client_blocks(TwoWayBlock):
+    def __init__(self, mycall, reflector_id, theirmodule, bind=None, peer=None ):
         self.mycall = mycall
+        self.reflectorid = reflector_id
         self.theirmodule = theirmodule
-        self.host = host
-        self.port = port
         self.qs = {
                 "send":multiprocessing.Queue(),
                 "recv":multiprocessing.Queue(),
                 }
+        process = multiprocessing.Process(name="m17ref_client_blocks", 
+                target=self.proc, 
+                args=(
+                    self.qs,
+                    mycall,
+                    theirmodule,
+                    self.host,
+                    self.port
+                    )
+                )
 
     def start(self):
-        process = multiprocessing.Process(name="m17ref_client_blocks", target=self.proc, args=(self.qs,self.mycall,self.theirmodule,self.host,self.port))
         process.start()
 
     def proc(self, qs, mycall,theirmodule, host,port):
         """
-        the shared process that handles the socket
         """
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind(("0.0.0.0", random.randint(17010,17100)))
-        sock.setblocking(False)
-        timeout = .1
+        cli = simple_n7tae_client(mycall, bind, peer)
+        cli.connect(theirmodule) #need to handle disconnects and resubscribes
+
         sendq = qs["send"]
         recvq = qs["recv"]
-        conn = (host, port)
-        refcon = network.simple_n7tae_reflector_client(mycall)
-        refcon.add_connection()
         while 1:
             try:
                 bs, conn = sock.recvfrom( 1500 ) 
@@ -99,29 +131,6 @@ class m17ref_client_blocks:
                 print("SEND",data)
                 sock.sendto(data,conn)
             time.sleep(.000001)
-
-    def probe(self, name, direction):
-        """
-        processes that can sample inputs and outputs
-        direction describes the path of elements from fn - 
-        e.g. if it's being used only to generate packets, the direction is "out"
-        if it's being used to terminate a processing stream, the direction is "in"
-        """
-        self.qs[name] = multiprocessing.Queue()
-        def fn(config,inq,outq):
-            while 1:
-                if direction == "in":
-                    self.qs[name].put(inq.get())
-                elif direction == "out":
-                    outq.put(self.qs[name].get())
-                time.sleep(.000001)
-        return fn
-
-    def receiver(self):
-        return self.probe("recv", "out")
-
-    def sender(self):
-        return self.probe("send", "in")
 
 
 def null(config, inq, outq):

@@ -32,16 +32,31 @@ def m17ref_name2host(refname):
 # def m17ref_name2dict(refname):
     # return "%s.m17ref.tarxvf.tech"%(refname)
 
-class n7tae_reflector_base:
-    def __init__(self, 
-            mycall, #always used!
-            #bind details if server, destination if client
-            *args, **kwargs
-            ):
-        self.mycall = mycall
-        self.host = kwargs.get("host","0.0.0.0")
-        self.port = kwargs.get("port", 17000)
-        #required: 
+
+
+
+class n7tae_protocol:
+    """
+    Requires 
+    * an M17 callsign, 
+    * a peer which is "0.0.0.0" and a port when a server, or the remote host and port when a client; 
+    * a mode string, either "server" or "client"
+
+    """
+    def __init__(self, mycallsign, mode, bind=None, peer=None):
+        self.mode = mode
+        if mode == "server":
+            self.log = logging.getLogger("m17refl\t")
+            #bind directly to specified port and wait for connections to this reflector
+            self.listenconn = peer if peer else ("0.0.0.0",17000)
+            self.peer = None
+        else:# mode == "client"
+            self.log = logging.getLogger("m17client(%s)\t"%(str(peer)))
+            self.listenconn = bind if bind else ("0.0.0.0", 17010)
+            self.peer = peer
+
+            #bind to a port of my choosing and connect out to remote reflector
+
         #self.connections, a dict where 
         #   key is a udp socket (host,port) pair 
         #   and 
@@ -49,9 +64,22 @@ class n7tae_reflector_base:
         #   or maybe key is a callsign? i like that better - except that can't work because we'll just end up looking up the call from the conn pair anyway!
         self.connections = {}
 
-        #implementations must also have self.sendq and self.recvq queues appropriate for threading or multiprocessing or whatever
-        #recvq is packets received from the socket
-        #sendq is packets to be sent out from our service
+        self.mycallsign = mycallsign
+        self.mycall_b = bytes(m17.address.Address(callsign=self.mycallsign))
+
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.sock.bind(self.listenconn)
+        self.sock.setblocking(False)
+
+        self.times = dattr({
+                "recv_ping": None,
+                "send_ping": None,
+                "recv_pong": None,
+                "send_pong": None,
+                "recv": None,
+                "send": None,
+                })
 
     def add_connection(self, call, my_channel, conn, prot):
         if conn in self.connections:
@@ -72,55 +100,6 @@ class n7tae_reflector_base:
         for call in self.connections:
             self.connections[call].prot.check_and_prune_if_dead()
 
-
-class n7tae_reflector_protocol_base:
-    """
-
-    Requires 
-    * an M17 callsign, 
-    * a peer which is "0.0.0.0" and a port when a server, or the remote host and port when a client; 
-    * a parent (service) that is reponsible for the actual application using the reflector protocol, and probably handles the concurrency necessary
-    * a mode string, either "server" or "client"
-
-    the service parameter currently needs to implement:
-        service.add_connection(call, chan, conn, protocol) (where protocol is an instance of n7tae_reflector_protocol, so pass self)
-        service.del_connection(conn) 
-    The service should also call status check methods of this class as appropriate:
-        check_connection
-
-    """
-    def __init__(self, mycallsign, peer, service, mode):
-        host,port = peer
-        self.mode = mode
-        self.log = logging.getLogger("m17refl(%s: %s:%d)\t"%(mode,peer[0].rjust(10), peer[1]))
-        if mode == "server":
-            #bind directly to specified port and wait for connections to this reflector
-            self.listenconn = peer
-            self.peer = None
-        else:# mode == "client"
-            self.listenconn = ("0.0.0.0", 17010)
-            self.peer = peer
-
-            #bind to a port of my choosing and connect out to remote reflector
-
-        self.mycallsign = mycallsign
-        self.mycall_b = bytes(m17.address.Address(callsign=self.mycallsign))
-        self.service = service #parent, usually a reflector or client
-
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind(self.listenconn)
-        self.sock.setblocking(False)
-
-        self.times = dattr({
-                "recv_ping": None,
-                "send_ping": None,
-                "recv_pong": None,
-                "send_pong": None,
-                "recv": None,
-                "send": None,
-                })
-
     @property
     def lastheard(self):
         times = [
@@ -138,8 +117,8 @@ class n7tae_reflector_protocol_base:
     def close(self):
         self.sock.close()
 
-    def connect(self, module="A"):
-        data = b"CONN" + self.mycall_b + module.encode("ascii")
+    def connect(self, theirmodule="A"):
+        data = b"CONN" + self.mycall_b + theirmodule.encode("ascii")
         self.send(data)
 
     def disco(self):
@@ -164,8 +143,8 @@ class n7tae_reflector_protocol_base:
 
         addr = int.from_bytes(callsign_40, 'big')
         theircall = m17.address.Address(addr=addr)
-        self.log.info("Connection from %s to my %s"%( theircall, my_channel))
-        return self.service.add_connection(theircall, my_channel, peer, self)
+        self.log.info("Connection attempt from %s to my %s"%( theircall, my_channel))
+        return self.add_connection(theircall, my_channel, peer, self)
 
     def handle_disc(self, pkt, peer):
         """
@@ -176,7 +155,7 @@ class n7tae_reflector_protocol_base:
         addr = int.from_bytes(callsign_40, 'big')
         theircall = m17.address.Address(addr=addr)
         self.log.info("%s (%s) sent DISC"%(peer, theircall))
-        self.service.del_connection(peer)
+        self.del_connection(peer)
         ...
 
     def pong(self, peer=None):
@@ -198,8 +177,14 @@ class n7tae_reflector_protocol_base:
     def check_and_prune_if_dead(self):
         # self.ping()
         # check last_[recv,send]_p[i,o]ngtime times and act "appropriately"
-        # self.service.del_connection(call)
+        # self.del_connection(call)
         pass
+
+    def send_to_all_except(self,  pkt, except_this_peer):
+        for peer in self.connections:
+            if peer == except_this_peer:
+                continue
+            self.send(pkt, peer)
 
     def send(self,  pkt, peer=None):
         if peer is None and self.peer is not None:
@@ -241,81 +226,104 @@ class n7tae_reflector_protocol_base:
                 self.nack(from_conn)
         elif pkt.startswith(b"DISC"):
             return self.handle_disc( pkt[4:], from_conn)
+        elif pkt.startswith(b"M17 "):
+            # self.log.warning("M17 packet magic: %s"%(pkt[:4]))
+            return pkt, from_conn
         else:
-            self.log.warning("unhandled")
-            # assert pkt[:4] == b"M17 "
+            self.log.warning("unhandled packet magic: %s"%(pkt[:4]))
             return pkt, from_conn
 
-class asyncio_n7tae_reflector(n7tae_reflector_base):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args,**kwargs)
 
-class simple_n7tae_reflector_client(n7tae_reflector_base):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args,**kwargs, mode="client")
-        self.refcall=kwargs.get("refcall")
-        self.refmodule=kwargs.get("refmodule")
+class simple_n7tae_client():
+    def __init__(self, mycall, bind, peer, *args, **kwargs):
+        self.mycall = mycall
+        #client
+        self.sendq = queue.Queue()
+        #sendq is packets to be sent out from our service to the socket
+        self.recvq = queue.Queue()
+        #recvq is packets received from the socket
 
-class simple_n7tae_reflector(n7tae_reflector_base):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args,**kwargs, mode="server")
 
-        #server
-        self.sendq = multiprocessing.Queue()
-        self.recvq = multiprocessing.Queue()
-        self.manager = multiprocessing.Manager()
-        self.connections = self.manager.dict()
-
-        self.srv_process = multiprocessing.Process(name="n7tae-like_reflector", 
-                target=self.server, 
+        self.prot = n7tae_protocol(mycall, mode="client", bind=bind, peer=peer)
+        self.proc = threading.Thread(name="mrefd_client", 
+                target=self.client, 
                 args=( 
+                    self.prot,
                     self.sendq,self.recvq, 
-                    self.connections,
                     self.mycall, 
-                    self.host, 
-                    self.port
                     ))
+        self.proc.daemon = True
+        self.start()
 
+    def connect(self, theirmodule):
+        return self.prot.connect(theirmodule)
     def start(self):
-        self.srv_process.start()
-
+        self.proc.start()
     def join(self):
-        self.srv_process.join()
+        self.proc.join()
+    def send(self, pkt):
+        self.sendq.put_nowait(pkt)
+    def recv(self):
+        if not self.recvq.empty():
+            return self.recvq.get_nowait()
+        else:
+            return None
 
-    def server(self, sendq, recvq, connections, mycall, host,port):
-        """
-        """
-        srv_conn = (host, port)
-        # sock = udp_non_blocking_server(srv_conn)
-        prot = n7tae_reflector_protocol(mycall, srv_conn, service=self, mode="server")
+    def client(self, prot, sendq, recvq, mycall):
         while 1:
             try:
-                _ = prot.recv()
-                # pktmagic, pkt, _, _ = remainder
-                # recvq.put( (pktmagic, pkt, clientconn) )
-                # if bs.startswith(b"M17 "):
-                    # recvq.put( (bs,clientconn) ) #could also hand conn along later
+                ret = prot.recv()
+                if ret:
+                    print("CLIENT:",ret)
+                    pkt, conn = ret
+                    recvq.put( pkt ) 
             except BlockingIOError as e:
                 pass
             if not sendq.empty():
-                data,udpconn= sendq.get_nowait()
-                print("SEND", data,udpconn)
-                prot.send( data, udpconn)
+                data = sendq.get_nowait()
+                print("SEND", data )
+                prot.send( data )
             time.sleep(.000001)
 
-    def reflector(self):
+class simple_n7tae_reflector():
+    def __init__(self, mycall, bind=None, peer=None, *args, **kwargs):
+        #server
+        self.mycall = mycall
+        self.bind = bind
+        self.peer = peer
+
+        self.prot = n7tae_protocol(mycall, mode="server", bind=bind, peer=peer)
+        self.proc = threading.Thread(name="mrefd-like_reflector", 
+                target=self.server, 
+                args=( 
+                    self.prot,
+                    self.mycall, 
+                    ))
+        if not kwargs.get('nodaemon'):
+            self.proc.daemon = True
+        self.proc.start()
+
+    def join(self):
+        self.proc.join()
+
+    def server(self, prot, mycall):
+        """
+        """
         while 1:
-            pkt, from_conn = self.recvq.get()
-            for conn in self.connections:
-                if conn == from_conn:
-                    continue
-                self.connections[conn].prot.send(pkt)
+            try:
+                ret = prot.recv()
+                if ret is not None:
+                    print("SERVER:",ret)
+                    pkt, conn = ret
+                    prot.send_to_all_except(pkt, conn)
+            except BlockingIOError as e:
+                pass
 
 class ReflectorProtocolTests(unittest.TestCase):
     def testPingPong(self):
         logging.info("pingpong test")
-        a = n7tae_reflector_protocol_base("1",("0.0.0.0",17000), None,mode="server")
-        b = n7tae_reflector_protocol_base("2",("127.0.0.1",17000), None,mode="client")
+        a = n7tae_protocol("1",mode="server",bind=("0.0.0.0",17000))
+        b = n7tae_protocol("2",mode="client",peer=("127.0.0.1",17000))
         b.ping() #send ping
         a.recv() #a gets ping, pongs
         b.recv() #b gets pong
@@ -327,9 +335,8 @@ class ReflectorProtocolTests(unittest.TestCase):
 
     def testConnect(self):
         logging.info("conn test")
-        asrv = n7tae_reflector_base("1")
-        a = n7tae_reflector_protocol_base("1", ("0.0.0.0",17000), asrv, mode="server")
-        b = n7tae_reflector_protocol_base("2", ("127.0.0.1",17000), None, mode="client")
+        a = n7tae_protocol("1", mode="server", bind=("0.0.0.0",17000))
+        b = n7tae_protocol("2", mode="client", peer=("127.0.0.1",17000))
         # b.connect("1", ("127.0.0.1", 17000), "Z")
         b.connect("Z")
         a.recv() 
@@ -341,11 +348,8 @@ class ReflectorProtocolTests(unittest.TestCase):
 
     def testDisco(self):
         logging.info("disco test")
-        asrv = n7tae_reflector_base("1")
-        bsrv = n7tae_reflector_base("2")
-        #don't worry, this weird split API isn't sticking around
-        a = n7tae_reflector_protocol_base("1", ("0.0.0.0",17000), asrv, mode="server")
-        b = n7tae_reflector_protocol_base("2", ("127.0.0.1",17000), bsrv, mode="client")
+        a = n7tae_protocol("1", mode="server", bind=("0.0.0.0",17000))
+        b = n7tae_protocol("2", mode="client", peer=("127.0.0.1",17000))
         # b.connect("1", ("127.0.0.1", 17000), "Z")
         b.connect("Z")
         a.recv() 
@@ -359,3 +363,44 @@ class ReflectorProtocolTests(unittest.TestCase):
         self.assertTrue(b.lastheard > 0)
         a.close()
         b.close()
+
+    def testZZClientServer(self):
+        logging.info("ClientServer test")
+        ref = simple_n7tae_reflector("REFLECTOR", bind=("0.0.0.0", 17000))
+        cli1 = simple_n7tae_client("CLIENT1", bind=("0.0.0.0",17010), peer=("127.0.0.1", 17000))
+        cli2 = simple_n7tae_client("CLIENT2", bind=("0.0.0.0",17011), peer=("127.0.0.1", 17000))
+        cli1.connect('Z')
+        cli2.connect('Z')
+        i = 0
+        cli1.send(b"M17 ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        while i < 10:
+            cli1.send(b"M17 ABCDEF %d"%(i))
+            time.sleep(.01)
+            x = cli2.recv()
+            assert x != None
+            i+=1
+        x = cli2.recv()
+        assert x != None
+
+        #and now expect nothing
+        x = cli2.recv()
+        assert x == None
+        # cli1.recv()
+        # ref.join()
+
+    def XZClientServer(self):
+        # disabled by removing "test" from name until such time as modules are added to the python reflector implentation above
+        logging.info("ClientServer - different modules test")
+        ref = simple_n7tae_reflector("REFLECTOR", bind=("0.0.0.0", 17000))
+        cli1 = simple_n7tae_client("CLIENT1", bind=("0.0.0.0",17010), peer=("127.0.0.1", 17000))
+        cli2 = simple_n7tae_client("CLIENT2", bind=("0.0.0.0",17011), peer=("127.0.0.1", 17000))
+        cli1.connect('Z')
+        cli2.connect('X')
+        i = 0
+        cli1.send(b"M17 ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        while i < 10:
+            cli1.send(b"M17 ABCDEF %d"%(i))
+            time.sleep(.01)
+            x = cli2.recv()
+            assert x == None
+            i+=1

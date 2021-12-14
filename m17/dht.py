@@ -1,3 +1,4 @@
+import enum
 import asyncio
 from kademlia.network import Server
 primaries = [("m17.tarxvf.tech.",17000)]
