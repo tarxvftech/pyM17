@@ -72,7 +72,7 @@ class Address:
         self.addr = self.addr if hasattr(self,"addr") else self.encode(self.callsign)
 
     def __str__(self):
-        return "%s == 0x%06x"%(self.callsign,self.addr)
+        return "'%s' (0x%06x)"%(self.callsign,self.addr)
     def __bytes__(self):
         return bitstruct.pack("u48",self.addr)
 

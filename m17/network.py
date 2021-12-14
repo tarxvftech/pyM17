@@ -92,6 +92,7 @@ class n7tae_reflector_protocol_base:
     def __init__(self, mycallsign, peer, service, mode):
         host,port = peer
         self.mode = mode
+        self.log = logging.getLogger("m17refl(%s: %s:%d)\t"%(mode,peer[0].rjust(10), peer[1]))
         if mode == "server":
             #bind directly to specified port and wait for connections to this reflector
             self.listenconn = peer
@@ -111,6 +112,29 @@ class n7tae_reflector_protocol_base:
         self.sock.bind(self.listenconn)
         self.sock.setblocking(False)
 
+        self.times = dattr({
+                "recv_ping": None,
+                "send_ping": None,
+                "recv_pong": None,
+                "send_pong": None,
+                "recv": None,
+                "send": None,
+                })
+
+    @property
+    def lastheard(self):
+        times = [
+                self.times.recv_ping,
+                self.times.recv_pong,
+                self.times.recv,
+                ]
+        deltatimes = [time.time() - t for t in times if t is not None]
+        if len(deltatimes) > 0:
+            return min(deltatimes)
+        else:
+            return None
+
+
     def close(self):
         self.sock.close()
 
@@ -126,7 +150,7 @@ class n7tae_reflector_protocol_base:
         which is why DISC doesn't have any way to specify _what_ to disconnect from
         """
 
-        print("DISC")
+        self.log.info("DISC")
         data = b"DISC" + self.mycall_b 
         self.send(data)
 
@@ -140,7 +164,7 @@ class n7tae_reflector_protocol_base:
 
         addr = int.from_bytes(callsign_40, 'big')
         theircall = m17.address.Address(addr=addr)
-        # print("from: ", theircall, " for my module ",my_channel)
+        self.log.info("Connection from %s to my %s"%( theircall, my_channel))
         return self.service.add_connection(theircall, my_channel, peer, self)
 
     def handle_disc(self, pkt, peer):
@@ -151,30 +175,23 @@ class n7tae_reflector_protocol_base:
         callsign_40 = pkt[:6]
         addr = int.from_bytes(callsign_40, 'big')
         theircall = m17.address.Address(addr=addr)
+        self.log.info("%s (%s) sent DISC"%(peer, theircall))
         self.service.del_connection(peer)
         ...
 
     def pong(self, peer=None):
-        if peer is None and self.peer is not None:
-            peer = self.peer
         data = b"PONG" + self.mycall_b 
         self.send(data, peer)
-        self.last_send_pongtime = time.time()
+        self.times.last_send_pong = time.time()
 
     def ping(self, peer=None):
-        if peer is None and self.peer is not None:
-            peer = self.peer
         data = b"PING" + self.mycall_b 
         self.send(data, peer)
-        self.last_send_pingtime = time.time()
+        self.times.last_send_ping = time.time()
     def ack(self, peer=None):
-        if peer is None and self.peer is not None:
-            peer = self.peer
         data = b"ACKN"
         self.send(data, peer)
     def nack(self, peer=None):
-        if peer is None and self.peer is not None:
-            peer = self.peer
         data = b"NACK"
         self.send(data, peer)
 
@@ -187,24 +204,26 @@ class n7tae_reflector_protocol_base:
     def send(self,  pkt, peer=None):
         if peer is None and self.peer is not None:
             peer = self.peer
-        print("SEND:", peer, pkt)
+        self.log.debug("SEND %s: %s"%(peer, pkt))
         self.sock.sendto(pkt, peer)
+        self.times.send = time.time()
 
     def recv(self):
         try:
             bs, clientconn = self.sock.recvfrom( 1500 ) 
+            self.times.recv = time.time()
         except BlockingIOError as e:
             return None
         return self.handle(bs, clientconn)
 
 
     def handle(self, pkt, from_conn):
-        print("RECV:", pkt)
+        self.log.debug("RECV %s: %s"%(from_conn, pkt))
         if pkt.startswith(b"PING"):
-            self.last_recv_pingtime = time.time()
+            self.times.last_recv_ping = time.time()
             self.pong(from_conn)
         elif pkt.startswith(b"PONG"):
-            self.last_recv_pongtime = time.time()
+            self.times.last_recv_pong = time.time()
             # self.pong()
         elif pkt.startswith(b"ACKN"):
             #successful connection, but as a client
@@ -214,8 +233,7 @@ class n7tae_reflector_protocol_base:
             #unsuccessful connection, as a client
             # self.disco()
             #do more than this, like disco, reconnect, etc
-
-            raise(Exception("Refused by reflector"))
+            raise(Exception("Refused (NACK) by reflector"))
         elif pkt.startswith(b"CONN"):
             if self.connect_in( pkt[4:], from_conn):
                 self.ack(from_conn)
@@ -224,12 +242,9 @@ class n7tae_reflector_protocol_base:
         elif pkt.startswith(b"DISC"):
             return self.handle_disc( pkt[4:], from_conn)
         else:
-            print("unhandled")
+            self.log.warning("unhandled")
             # assert pkt[:4] == b"M17 "
-            ...
-
-
-
+            return pkt, from_conn
 
 class asyncio_n7tae_reflector(n7tae_reflector_base):
     def __init__(self, *args, **kwargs):
@@ -260,10 +275,13 @@ class simple_n7tae_reflector(n7tae_reflector_base):
                     self.host, 
                     self.port
                     ))
+
     def start(self):
         self.srv_process.start()
+
     def join(self):
         self.srv_process.join()
+
     def server(self, sendq, recvq, connections, mycall, host,port):
         """
         """
@@ -295,18 +313,20 @@ class simple_n7tae_reflector(n7tae_reflector_base):
 
 class ReflectorProtocolTests(unittest.TestCase):
     def testPingPong(self):
-        print("pingpong test")
+        logging.info("pingpong test")
         a = n7tae_reflector_protocol_base("1",("0.0.0.0",17000), None,mode="server")
         b = n7tae_reflector_protocol_base("2",("127.0.0.1",17000), None,mode="client")
         b.ping() #send ping
         a.recv() #a gets ping, pongs
         b.recv() #b gets pong
+        self.assertTrue(a.lastheard > 0)
+        self.assertTrue(b.lastheard > 0)
         a.close()
         b.close()
 
 
     def testConnect(self):
-        print("connect test")
+        logging.info("conn test")
         asrv = n7tae_reflector_base("1")
         a = n7tae_reflector_protocol_base("1", ("0.0.0.0",17000), asrv, mode="server")
         b = n7tae_reflector_protocol_base("2", ("127.0.0.1",17000), None, mode="client")
@@ -318,9 +338,9 @@ class ReflectorProtocolTests(unittest.TestCase):
         # can't really have state without concurrency for this, eh :/
         a.close()
         b.close()
-        print("end connect")
+
     def testDisco(self):
-        print("disco test")
+        logging.info("disco test")
         asrv = n7tae_reflector_base("1")
         bsrv = n7tae_reflector_base("2")
         #don't worry, this weird split API isn't sticking around
@@ -330,9 +350,12 @@ class ReflectorProtocolTests(unittest.TestCase):
         b.connect("Z")
         a.recv() 
         b.recv()
+        self.assertTrue(a.lastheard > 0)
+        self.assertTrue(b.lastheard > 0)
         b.disco()
         a.recv() 
         b.recv()
+        self.assertTrue(a.lastheard > 0)
+        self.assertTrue(b.lastheard > 0)
         a.close()
         b.close()
-        print("end connect")

@@ -90,6 +90,30 @@ def udp_reflector(refcallsign, port=default_port):
     srv()
 
 
+def m17ref_silent_client(mycall,mymodule,refname,module,port=default_port):
+    mode=3200
+    port=int(port)
+    if( refname.startswith("M17-") and len(refname) <= 7 ):
+        #should also be able to look up registered port in dns
+        host = network.m17ref_name2host(refname)
+        print(host)
+        #fallback to fetching json if its not in dns already
+    else:
+        host = "127.0.0.1"
+        print("not a valid ref, falling back to localhost")
+        # raise(NotImplementedError)
+    myrefmod = "%s %s"%(mycall,mymodule)
+    c = m17ref_client_blocks(myrefmod,module,host,port)
+    # tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, c.sender()]
+    tx_chain = []
+    rx_chain = [c.receiver(), tee("out.m17"), m17parse, tee("out.c2"), null]
+    config = default_config(mode)
+    config.m17.dst = "%s %s"%(refname,module)
+    config.m17.src = mycall
+    print(config)
+    c.start()
+    modular(config, [tx_chain, rx_chain])
+
 def m17ref_client(mycall,mymodule,refname,module,port=default_port,mode=3200):
     mode=int(mode) #so we can call modular_client straight from command line
     port=int(port)

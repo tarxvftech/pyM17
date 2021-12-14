@@ -62,7 +62,10 @@ class m17ref_client_blocks:
         self.theirmodule = theirmodule
         self.host = host
         self.port = port
-        self.qs = {}
+        self.qs = {
+                "send":multiprocessing.Queue(),
+                "recv":multiprocessing.Queue(),
+                }
 
     def start(self):
         process = multiprocessing.Process(name="m17ref_client_blocks", target=self.proc, args=(self.qs,self.mycall,self.theirmodule,self.host,self.port))
@@ -79,8 +82,8 @@ class m17ref_client_blocks:
         sendq = qs["send"]
         recvq = qs["recv"]
         conn = (host, port)
-        refcon = network.n7tae_reflector_conn(sock,conn,mycall,theirmodule)
-        refcon.connect()
+        refcon = network.simple_n7tae_reflector_client(mycall)
+        refcon.add_connection()
         while 1:
             try:
                 bs, conn = sock.recvfrom( 1500 ) 
