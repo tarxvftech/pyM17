@@ -420,8 +420,14 @@ def m17frames2streams(config,inq,outq):
     while 1:
         if not inq.empty():
             x = inq.get()
-            if len(framesthisstream) and (x.streamid != lastsid or x.isLastFrame()):
-                log.debug("flush due to sid change or last frame")
+            if len(framesthisstream) and (x.isLastFrame()):
+                log.debug("flush due to last frame")
+                framesthisstream.append(x)
+                flush()
+                lastsid = None
+                lastframetime = None
+            elif len(framesthisstream) and (x.streamid != lastsid):
+                log.debug("flush due to sid change")
                 flush()
                 lastsid = None
                 lastframetime = None
