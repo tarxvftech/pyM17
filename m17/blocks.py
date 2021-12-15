@@ -401,7 +401,7 @@ def m17frames2streams(config,inq,outq):
     framesthisstream = []
     lastsid = None
     lastframetime = None
-    timeout = .3 #seconds
+    timeout = .5 #seconds
 
 
     # maxlength = 300 #seconds (300==5min)
@@ -426,16 +426,21 @@ def m17frames2streams(config,inq,outq):
                 flush()
                 lastsid = None
                 lastframetime = None
+                #don't fall through, we already handled this frame
+                continue
             elif len(framesthisstream) and (x.streamid != lastsid):
                 log.debug("flush due to sid change")
                 flush()
-                lastsid = None
-                lastframetime = None
-            else:
-                framesthisstream.append(x)
-                lastsid = x.streamid
-                lastframetime = time.time()
+                #fall through so this frame of a new stream gets handled
+            #default - handle frame as normal because it's not part of a new stream or the last packet of an old stream
+            framesthisstream.append(x)
+            lastsid = x.streamid
+            lastframetime = time.time()
         else:
+            #fallback - flush when there's been enough time
+            #we only bother checking when the queue is empty because the queue will be empty a LOT
+            #frames only likely to come in every multiple tens of milliseconds for a streaming service
+            #and for replying recorded traffic, we can certainly keep up with a timeout, can't we?
             if lastframetime and lastframetime +timeout <= time.time():
                 log.debug("flush due to timeout")
                 flush()
