@@ -56,6 +56,8 @@ class n7tae_protocol:
             self.peer = peer
 
             #bind to a port of my choosing and connect out to remote reflector
+        self.nack_count = 0
+        self.subs = {}
 
         #self.connections, a dict where 
         #   key is a udp socket (host,port) pair 
@@ -81,20 +83,27 @@ class n7tae_protocol:
                 "send": None,
                 })
 
-    def add_connection(self, call, my_channel, conn, prot):
+    def add_subscription(self, theirmodule ):
+        self.subs[theirmodule] = True
+    def rm_subscription(self, theirmodule ):
+        self.subs[theirmodule] = False
+    def add_connection(self, call, my_channel, conn):
         if conn in self.connections:
             return False #already registered, NACK 'em
         new_connection = dattr({
                 "call": call,
                 "conn": conn,
                 "chan": my_channel,
-                "prot": prot
                 })
         self.connections[conn] = new_connection
         return True
 
     def del_connection(self, conn):
-        del self.connections[conn]
+        try:
+            if conn in self.connections:
+                del self.connections[conn]
+        except KeyError as e:
+            pass
 
     def check_and_prune_connections(self):
         for call in self.connections:
@@ -119,6 +128,7 @@ class n7tae_protocol:
 
     def connect(self, theirmodule="A"):
         data = b"CONN" + self.mycall_b + theirmodule.encode("ascii")
+        self.add_subscription(theirmodule)
         self.send(data)
 
     def disco(self):
@@ -144,7 +154,7 @@ class n7tae_protocol:
         addr = int.from_bytes(callsign_40, 'big')
         theircall = m17.address.Address(addr=addr)
         self.log.info("Connection attempt from %s to my %s"%( theircall, my_channel))
-        return self.add_connection(theircall, my_channel, peer, self)
+        return self.add_connection(theircall, my_channel, peer)
 
     def handle_disc(self, pkt, peer):
         """
@@ -212,22 +222,28 @@ class n7tae_protocol:
             # self.pong()
         elif pkt.startswith(b"ACKN"):
             #successful connection, but as a client
-            # self.add_connection()
-            pass
+            self.nack_count = 0
         elif pkt.startswith(b"NACK"):
             #unsuccessful connection, as a client
-            self.disco()
-            #do more than this, like disco, reconnect, etc
-            raise(Exception("Refused (NACK) by reflector"))
+            self.nack_count += 1
+            if self.nack_count < 5:
+                self.disco()
+                for module, status in self.subs.items():
+                    if status:
+                        self.connect(module)
+            else:
+                raise(Exception("Refused (NACK) by reflector"))
         elif pkt.startswith(b"CONN"):
             if self.connect_in( pkt[4:], from_conn):
                 self.ack(from_conn)
             else:
-                self.nack(from_conn)
+                self.nack(from_conn) 
+                #really i don't think we should NACK them for already being connected. That's rude.
+                #but leaving it as-is for now
         elif pkt.startswith(b"DISC"):
             return self.handle_disc( pkt[4:], from_conn)
         elif pkt.startswith(b"M17 "):
-            self.log.warning("M17 packet magic: %s"%(pkt[:4]))
+            # self.log.warning("M17 packet magic: %s"%(pkt[:4]))
             return pkt, from_conn
         else:
             self.log.warning("unhandled packet magic: %s"%(pkt[:4]))

@@ -151,6 +151,8 @@ class regularFrame:
         # d["chksum"] = bitstruct.unpack("u16", data[8+16:8+16+2])[0]
         return d
 
+
+
 class ipFrame(regularFrame):
     """
     32b "M17 " 
@@ -160,7 +162,11 @@ class ipFrame(regularFrame):
     128b payload
     16b  CRC-16 chksum
     """
-    sz = 4+2+initialLICH.sz+2+16+2
+    magicsz = 4
+    streamidsz = 2 #bytes
+    fnsz = 2 #bytes
+    payloadsz = 16 #bytes
+    sz = magicsz+streamidsz+initialLICH.sz+fnsz+payloadsz+2 #bytes
     def __init__(self, *args, **kwargs):
         self.streamid = kwargs.pop('streamid',0x0)
         super().__init__(*args,**kwargs)

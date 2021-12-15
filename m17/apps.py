@@ -45,12 +45,15 @@ def stream_saver(mycall, refname,theirmodule):
     mymodule="T"
     assert( refname.startswith("M17-") and len(refname) <= 7 )
     #should also be able to look up registered port in dns at some point
-    host = network.m17ref_name2host(refname)
+    if refname != "M17-XVF":
+        host = network.m17ref_name2host(refname)
+    else:
+        host = "127.0.0.1"
     # print(host)
 
     myrefmod = "%s %s"%(mycall,mymodule)
     c = client_blocks(myrefmod,refname, theirmodule,peer=(host,port))
-    rx_chain = [c.receiver(), teefile('out.m17'), null ]
+    rx_chain = [c.receiver(), m17parse, tee('frame'), m17frames2streams, tee('stream'), teestreamfile('streamtest'), null ]
     # rx_chain = [m17parse,... ]
     config = {}
     c.start()
@@ -299,7 +302,9 @@ def modular(config, chains):
         procs = modules['processes']
         while 1:
             if any(not p['process'].is_alive() for p in procs):
-                print("lost a client process")
+                print("lost a client process ")
+                for p in procs:
+                    print(p['name'], p['process'].name, p['process'].is_alive())
                 break
             time.sleep(.05)
         #I can see where this is going to need to change

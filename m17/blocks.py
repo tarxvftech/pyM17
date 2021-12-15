@@ -4,11 +4,13 @@ import time
 import queue
 import socket
 import random
+import logging
 import multiprocessing
 
 from .address import Address
 from .frames import ipFrame
 from .framer import M17_IPFramer
+from .streams import M17_IPStream
 from .const import *
 from .misc import example_bytes,_x,chunk,dattr
 from .blocks import *
@@ -370,16 +372,60 @@ def m17parse(config,inq,outq):
             print(f)
         outq.put(f)
 
+def teestreamfile(filenamebase):
+    """
+    tee incoming streams to separate files named in a pattern.
+    """
+    def fn(config,inq,outq):
+        while 1:
+            stream1 = inq.get()
+            filename = "%s_%x_%f.m17stream"%(filenamebase, stream1.streamid, time.time())
+            with open(filename, "wb") as fd:
+                fd.write(bytes(stream1))
+            outq.put(stream1)
+    return fn
+
 def m17frames2streams(config,inq,outq):
     """
     Batches up groups of parsed M17 frames (IP only for now) into streams.
 
     Uses a timeout and end of stream markers to know when to flush a
     stream to output.
+    A stream is defined here as a single transmission, so all LSF frames
+    should be the same and all frame counters should be monotonically
+    increasing, ideally from zero.
+
+    Alternatively you could rely on the SID (stream ID). which now that
+    I've remembered exists I'm totally using.
     """
+    framesthisstream = []
+    lastsid = None
+    lastframetime = None
+    timeout = .3 #seconds
+    log = logging.getLogger("m17frames2streams")
+    def flush():
+        nonlocal framesthisstream
+        nonlocal log
+        if len(framesthisstream):
+            log.debug("flush stream!")
+            s = M17_IPStream.from_frames( framesthisstream )
+            outq.put(s)
+            framesthisstream = []
     while 1:
-        x = inq.get()
-        outq.put(x)
+        if not inq.empty():
+            x = inq.get()
+            if x.streamid != lastsid:
+                flush()
+                lastsid = x.streamid
+            else:
+                framesthisstream.append(x)
+            lastframetime = time.time()
+        else:
+            if lastframetime and lastframetime +timeout <= time.time():
+                flush()
+                lastframetime = None
+            time.sleep(.0001)
+        
 
 def payload2codec2(config,inq,outq):
     """
