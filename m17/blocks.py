@@ -379,7 +379,7 @@ def teestreamfile(filenamebase):
     def fn(config,inq,outq):
         while 1:
             stream1 = inq.get()
-            filename = "%s_%x_%f.m17stream"%(filenamebase, stream1.streamid, time.time())
+            filename = "%s_%x_%f.m17s"%(filenamebase, stream1.streamid, time.time())
             with open(filename, "wb") as fd:
                 fd.write(bytes(stream1))
             outq.put(stream1)
@@ -402,6 +402,12 @@ def m17frames2streams(config,inq,outq):
     lastsid = None
     lastframetime = None
     timeout = .3 #seconds
+
+
+    # maxlength = 300 #seconds (300==5min)
+    # maxpackets = maxlength / .04 #m17 frame is 40ms
+    ##not implemented yet, not sure i want it
+
     log = logging.getLogger("m17frames2streams")
     def flush():
         nonlocal framesthisstream
@@ -414,14 +420,18 @@ def m17frames2streams(config,inq,outq):
     while 1:
         if not inq.empty():
             x = inq.get()
-            if x.streamid != lastsid:
+            if len(framesthisstream) and (x.streamid != lastsid or x.isLastFrame()):
+                log.debug("flush due to sid change or last frame")
                 flush()
-                lastsid = x.streamid
+                lastsid = None
+                lastframetime = None
             else:
                 framesthisstream.append(x)
-            lastframetime = time.time()
+                lastsid = x.streamid
+                lastframetime = time.time()
         else:
             if lastframetime and lastframetime +timeout <= time.time():
+                log.debug("flush due to timeout")
                 flush()
                 lastframetime = None
             time.sleep(.0001)

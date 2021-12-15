@@ -41,7 +41,7 @@ class initialLICH:
 
 
     def __str__(self):
-        return "LICH: " + self.src.callsign + " =[%d]> "%(self.streamtype) + self.dst.callsign
+        return "'"+self.src.callsign + "' =[%d]> '"%(self.streamtype) + self.dst.callsign + "'"
 
     def __bytes__(self):
         b = b""
@@ -116,6 +116,11 @@ class regularFrame:
         self.payload = payload
         if self.LICH:
             self.LICH_chunks = self.LICH.chunks()
+    def isLastFrame(self):
+        """
+        high bit of 16 bit frame number indicates last frame
+        """
+        return self.frame_number & (1<<15)
     def __eq__(self, other):
         return bytes(self) == bytes(other)
 
@@ -174,7 +179,7 @@ class ipFrame(regularFrame):
             raise(Exception("ipFrames need a full LICH passed"))
 
     def __str__(self):
-        return "SID: %04x\n LICH: "%(self.streamid) + self.LICH.src.callsign + " =[%d]> "%(self.LICH.streamtype) + self.LICH.dst.callsign + "\nM17[%d]: %s"%(self.frame_number,_x(self.payload))
+        return "SID[%04x] "%(self.streamid) + str(self.LICH) + " fn%05d: %s"%(self.frame_number,_x(self.payload))
 
     def __bytes__(self):
         b=b""
