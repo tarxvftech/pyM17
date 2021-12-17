@@ -52,7 +52,7 @@ class n7tae_protocol:
             self.peer = None
         else:# mode == "client"
             self.log = logging.getLogger("m17client(%s)\t"%(str(peer)))
-            self.listenconn = bind if bind else ("0.0.0.0", 17010)
+            self.listenconn = bind if bind else ("0.0.0.0", 17000)
             self.peer = peer
 
             #bind to a port of my choosing and connect out to remote reflector
@@ -117,6 +117,7 @@ class n7tae_protocol:
                 self.times.recv,
                 ]
         deltatimes = [time.time() - t for t in times if t is not None]
+        print(times,deltatimes)
         if len(deltatimes) > 0:
             return min(deltatimes)
         else:
@@ -170,16 +171,18 @@ class n7tae_protocol:
 
     def pong(self, peer=None):
         data = b"PONG" + self.mycall_b 
+        self.times.send_pong = time.time()
         self.send(data, peer)
-        self.times.last_send_pong = time.time()
 
     def ping(self, peer=None):
         data = b"PING" + self.mycall_b 
+        self.times.send_ping = time.time()
         self.send(data, peer)
-        self.times.last_send_ping = time.time()
+
     def ack(self, peer=None):
         data = b"ACKN"
         self.send(data, peer)
+
     def nack(self, peer=None):
         data = b"NACK"
         self.send(data, peer)
@@ -200,8 +203,8 @@ class n7tae_protocol:
         if peer is None and self.peer is not None:
             peer = self.peer
         # self.log.debug("SEND %s: %s"%(peer, pkt))
-        self.sock.sendto(pkt, peer)
         self.times.send = time.time()
+        self.sock.sendto(pkt, peer)
 
     def recv(self):
         try:
@@ -215,10 +218,10 @@ class n7tae_protocol:
     def handle(self, pkt, from_conn):
         # self.log.debug("RECV %s: %s"%(from_conn, pkt))
         if pkt.startswith(b"PING"):
-            self.times.last_recv_ping = time.time()
+            self.times.recv_ping = time.time()
             self.pong(from_conn)
         elif pkt.startswith(b"PONG"):
-            self.times.last_recv_pong = time.time()
+            self.times.recv_pong = time.time()
             # self.pong()
         elif pkt.startswith(b"ACKN"):
             #successful connection, but as a client
@@ -299,7 +302,7 @@ class simple_n7tae_client():
                 data = sendq.get_nowait()
                 # print("SEND", data )
                 prot.send( data )
-            time.sleep(.000001)
+            time.sleep(.00001)
 
 class simple_n7tae_reflector():
     def __init__(self, mycall, bind=None, peer=None, *args, **kwargs):
@@ -334,12 +337,13 @@ class simple_n7tae_reflector():
                     prot.send_to_all_except(pkt, conn)
             except BlockingIOError as e:
                 pass
+            time.sleep(.00001)
 
 class ReflectorProtocolTests(unittest.TestCase):
     def testPingPong(self):
         logging.info("pingpong test")
         a = n7tae_protocol("1",mode="server",bind=("0.0.0.0",17000))
-        b = n7tae_protocol("2",mode="client",peer=("127.0.0.1",17000))
+        b = n7tae_protocol("2",mode="client",bind=("0.0.0.0",17001),peer=("127.0.0.1",17000))
         b.ping() #send ping
         a.recv() #a gets ping, pongs
         b.recv() #b gets pong
@@ -352,7 +356,7 @@ class ReflectorProtocolTests(unittest.TestCase):
     def testConnect(self):
         logging.info("conn test")
         a = n7tae_protocol("1", mode="server", bind=("0.0.0.0",17000))
-        b = n7tae_protocol("2", mode="client", peer=("127.0.0.1",17000))
+        b = n7tae_protocol("2", mode="client", peer=("127.0.0.1",17000),bind=("0.0.0.0",17001))
         # b.connect("1", ("127.0.0.1", 17000), "Z")
         b.connect("Z")
         a.recv() 
@@ -365,11 +369,12 @@ class ReflectorProtocolTests(unittest.TestCase):
     def testDisco(self):
         logging.info("disco test")
         a = n7tae_protocol("1", mode="server", bind=("0.0.0.0",17000))
-        b = n7tae_protocol("2", mode="client", peer=("127.0.0.1",17000))
+        b = n7tae_protocol("2", mode="client", peer=("127.0.0.1",17000),bind=("0.0.0.0",17001))
         # b.connect("1", ("127.0.0.1", 17000), "Z")
         b.connect("Z")
         a.recv() 
         b.recv()
+        a.recv() 
         self.assertTrue(a.lastheard > 0)
         self.assertTrue(b.lastheard > 0)
         b.disco()

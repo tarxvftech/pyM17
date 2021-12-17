@@ -1,6 +1,6 @@
-
 import sys
 import time
+import wave
 import queue
 import socket
 import random
@@ -26,11 +26,30 @@ def codeblock(callback):
             outq.put(y)
     return fn
 
+
+def m17rewriter(*args,**kwargs):
+    def m17rewriter_fn(config,inq,outq,testmode=False):
+        while 1:
+            if inq.empty() and testmode:
+                return
+            frame = inq.get()
+            dst = kwargs.get('dst')
+            src = kwargs.get('src')
+            sid = kwargs.get('streamid')
+            if sid:
+                frame.streamid = sid
+            if dst:
+                frame.LICH.dst = Address(callsign=dst)
+            if src:
+                frame.LICH.src = Address(callsign=src)
+            outq.put(frame)
+    return m17rewriter_fn
+
 def udp_server( port, packet_handler, occasional=None ):
     """
     not meant to be used in a chain
     """
-    def fn():  #but still has a closure to allow running it as a process
+    def udp_server_fn():  #but still has a closure to allow running it as a process
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind(("0.0.0.0", port))
         sock.setblocking(False)
@@ -46,14 +65,14 @@ def udp_server( port, packet_handler, occasional=None ):
                 pass
             occasional(sock)
             time.sleep(.001)
-    return fn
+    return udp_server_fn
 
 def zeros(size, dtype, rate):
-    def fn(config, inq, outq):
+    def zeros_fn(config, inq, outq):
         while 1:
             outq.put(numpy.zeros(size, dtype))
             time.sleep(1/rate)
-    return fn
+    return zeros_fn
 
 class TwoWayBlock:
     def __init__(self):
@@ -68,14 +87,14 @@ class TwoWayBlock:
         if it's being used to terminate a processing stream, the direction is "in"
         """
         # self.qs[name] = multiprocessing.Queue()
-        def fn(config,inq,outq):
+        def probe_fn(config,inq,outq):
             while 1:
                 if direction == "in":
                     self.qs[name].put(inq.get())
                 elif direction == "out":
                     outq.put(self.qs[name].get())
                 time.sleep(.000001)
-        return fn
+        return probe_fn
     def receiver(self):
         return self.probe("recv", "out")
     def sender(self):
@@ -86,6 +105,41 @@ def reflector(mycall, bind=("0.0.0.0",17000)):
     #exits immediately, so make sure to tell it to not daemonize the thread so it stays running
     network.simple_n7tae_reflector(mycall, bind=bind, nodaemon=True)
 
+def tee_s3uploader(bucket,filebasename):
+    import boto3
+    logging.getLogger('boto3').setLevel(logging.WARNING)
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    logging.getLogger('botocore').setLevel(logging.WARNING)
+    logging.getLogger('s3transfer').setLevel(logging.WARNING)
+    log = logging.getLogger("tee_s3uploader")
+    s3 = boto3.resource('s3')
+    def s3uploader_fn(config,inq,outq):
+        buk = s3.Bucket('%s'%(bucket))
+        while 1:
+            x = inq.get()
+            buk.put_object(Key=filename,Body=x)
+            # filename = "%s_%04x_%f.m17s"%(filenamebase, stream1.streamid, time.time())
+            log.debug("uploaded to %s"%(filename))
+            outq.put(x)
+    return s3uploader_fn
+
+def tee_s3uploader_m17streams(bucket,filenamebase):
+    import boto3
+    logging.getLogger('boto3').setLevel(logging.WARNING)
+    logging.getLogger('urllib3').setLevel(logging.WARNING)
+    logging.getLogger('botocore').setLevel(logging.WARNING)
+    logging.getLogger('s3transfer').setLevel(logging.WARNING)
+    log = logging.getLogger("tee_s3uploader_m17streams")
+    s3 = boto3.resource('s3')
+    def s3uploader_fn(config,inq,outq):
+        buk = s3.Bucket('%s'%(bucket))
+        while 1:
+            stream1 = inq.get()
+            filename = "%d_%04x_%s.m17s"%(time.time(), stream1.streamid, filenamebase)
+            buk.put_object(Key=filename,Body=bytes(stream1))
+            log.debug("uploaded to %s"%(filename))
+            outq.put(stream1)
+    return s3uploader_fn
 
 class client_blocks(TwoWayBlock):
     def __init__(self, mycall, reflector_id, theirmodule, bind=None, peer=None ):
@@ -125,7 +179,7 @@ class client_blocks(TwoWayBlock):
                 recvq.put(x)
             if not sendq.empty():
                 data= sendq.get_nowait()
-                sendq.put(data)
+                cli.sendq.put(data)
             time.sleep(.000001)
 
 
@@ -149,7 +203,7 @@ def tee(header):
     "header" parameter gets printed with each queue element to differentiate multiple tee()s
     named like standard UNIX tee(1)
     """
-    def fn(config, inq, outq):
+    def tee_fn(config, inq, outq):
         while 1:
             x = inq.get()
             if type(x) == type(b""):
@@ -157,11 +211,11 @@ def tee(header):
             else:
                 print(header, x)
             outq.put(x)
-    return fn
+    return tee_fn
 
 def ffmpeg(ffmpeg_url):
     ffmpeg_url_example="icecast://source:m17@m17tester.tarxvf.tech:876/live.ogg"
-    def fn(config, inq, outq):
+    def ffmpeg_fn(config, inq, outq):
         from subprocess import Popen, PIPE, STDOUT
         p = Popen(
                 ["ffmpeg","-re", #ffmpeg, and limit reading rate to native speed so we don't spin a whole core with writing zeros to icecast
@@ -180,7 +234,7 @@ def ffmpeg(ffmpeg_url):
                 audio = numpy.zeros(config.codec2.conrate,dtype="<h")
             sys.stdout.flush()
             # time.sleep(1/50)
-    return fn
+    return ffmpeg_fn
 
 def teefile(filename):
     """
@@ -188,7 +242,7 @@ def teefile(filename):
     them to a provided filename
     """
     print("TEEFILE",filename)
-    def fn(config, inq, outq):
+    def teefile_fn(config, inq, outq):
         with open(filename,"wb") as fd:
             try:
                 while 1:
@@ -199,7 +253,7 @@ def teefile(filename):
             except:
                 print("Closing")
                 fd.close()
-    return fn
+    return teefile_fn
 
 def throttle(n_per_second):
     """
@@ -207,8 +261,36 @@ def throttle(n_per_second):
     a specified rate in q elements per second. As "no more than" might
     suggest, this is setting a maximum, not a minimum. Minimum is based
     on your hardware and a number of other factors.
+
+    TODO implementation problem - stutters on long transmissions.
+    Any delay at all in upstream leads to stuttering due to implementation here.
     """
-    raise(NotImplementedError) #TODO
+    def throttle_fn(config,inq,outq):
+        lastsent = 0
+        time_s_between = 1/n_per_second
+        while 1:
+            x = inq.get()
+            while lastsent + time_s_between >= time.time():
+                time.sleep(.0002)
+            outq.put(x)
+            lastsent = time.time()
+    return throttle_fn
+
+def tee2wav(filename, samplerate, bytespersample, channels):
+    wavfilename = "%s.wav"%(filename)
+    def tee2wav_fn(config,inq,outq,testmode=False):
+        with wave.open(wavfilename,"wb") as fd:
+            fd.setnchannels(channels)
+            fd.setsampwidth(bytespersample)
+            fd.setframerate(samplerate) #codec2 output is 8khz s16le mono
+            while 1:
+                if inq.empty() and testmode:
+                    return
+                wavframe = inq.get()
+                fd.writeframes(wavframe)
+                outq.put(wavframe)
+    return tee2wav_fn
+
 
 def delay(size):
     """
@@ -217,14 +299,14 @@ def delay(size):
 
     See "throttle()" for enforcing a rate limit of elements per unit time.
     """
-    def fn(config, inq, outq):
+    def delay_fn(config, inq, outq):
         fifo = []
         while 1:
             x = inq.get()
             fifo.insert(0,x)
             if len(fifo) > size:
                 outq.put(fifo.pop())
-    return fn
+    return delay_fn
 
 def ptt(config, inq, outq):
     """
@@ -334,8 +416,22 @@ def tobytes(config,inq,outq):
     while 1:
         outq.put(bytes(inq.get()))
 
+def toutf8(config,inq,outq):
+    """
+    convert bytes passing through to utf8 strings
+    """
+    while 1:
+        outq.put(inq.get().decode('utf-8'))
+def tossml(config,inq,outq):
+    """
+    convert text stream passing through to ssml stream
+    (just adds tags for compatibility)
+    """
+    while 1:
+        outq.put("<speak>" + inq.get() + "</speak>")
 
-def m17frame(config,inq,outq):
+
+def m17frame(config,inq,outq,testmode=False):
     """
     frame incoming codec2 compressed audio frames into M17 packets
     """
@@ -348,11 +444,14 @@ def m17frame(config,inq,outq):
             dst=dst,
             src=src,
             streamtype=5, #TODO need to set this based on codec2 settings too to support c2.1600
-            nonce=b"\xbe\xef\xf0\x0d" + b"a"*10 ) 
+            nonce=b"\xCC"*14
+            )
     while 1:
         plen = 16 #TODO grab from the framer itself
         #need 16 bytes for M17 payload, each element on q should be 8 bytes if c2.3200
         #this will fail in funny ways if our c2 payloads dont fit exactly on byte boundaries
+        if inq.empty() and testmode:
+            return
         d = inq.get()
         while len(d) < plen:
             d += inq.get()
@@ -376,16 +475,24 @@ def teestreamfile(filenamebase):
     """
     tee incoming streams to separate files named in a pattern.
     """
-    def fn(config,inq,outq):
+    def teestreamfile_fn(config,inq,outq,testmode=False):
         while 1:
             stream1 = inq.get()
-            filename = "%s_%x_%f.m17s"%(filenamebase, stream1.streamid, time.time())
+            filename = "%s_%04x_%f.m17s"%(filenamebase, stream1.streamid, time.time())
             with open(filename, "wb") as fd:
                 fd.write(bytes(stream1))
             outq.put(stream1)
-    return fn
+    return teestreamfile_fn
 
-def m17frames2streams(config,inq,outq):
+def m17streams2frames(config,inq,outq,testmode=False):
+    while 1:
+        if inq.empty() and testmode:
+            return
+        stream = inq.get()
+        for frame in stream:
+            outq.put(frame)
+
+def m17frames2streams(config,inq,outq,testmode=False):
     """
     Batches up groups of parsed M17 frames (IP only for now) into streams.
 
@@ -397,6 +504,12 @@ def m17frames2streams(config,inq,outq):
 
     Alternatively you could rely on the SID (stream ID). which now that
     I've remembered exists I'm totally using.
+
+    TODO: write tests to check
+    * stream sid changes
+    * last packet handling
+    * first packet of a new stream doesn't get lost
+    * timeouts 
     """
     framesthisstream = []
     lastsid = None
@@ -445,7 +558,7 @@ def m17frames2streams(config,inq,outq):
                 log.debug("flush due to timeout")
                 flush()
                 lastframetime = None
-            time.sleep(.0001)
+            time.sleep(.005) #streams don't mind being delayed much, since they get delivered all at once
         
 
 def payload2codec2(config,inq,outq):
@@ -466,7 +579,7 @@ def codec2setup(mode):
     bitframe = c2.bits_per_frame()
     return [c2,conrate,bitframe]
 
-def codec2enc(config,inq,outq):
+def codec2enc(config,inq,outq,testmode=False):
     """
     exact opposite of codec2dec
 
@@ -475,12 +588,14 @@ def codec2enc(config,inq,outq):
     Out: depends on Codec2 mode, but 3200 bps gives 8 bytes per 160 sample raw frame.
     """
     while 1:
+        if inq.empty() and testmode:
+            return
         audio = inq.get()
         c2bits = config.codec2.c2.encode(audio)
         assert len(c2bits) == config.codec2.bitframe/8
         outq.put(c2bits)
 
-def codec2dec(config,inq,outq):
+def codec2dec(config,inq,outq,testmode=False):
     """
     exact opposite of codec2enc
     In: Depends on Codec2 mode, but expects 8 bytes for Codec2 mode 3200
@@ -488,6 +603,8 @@ def codec2dec(config,inq,outq):
     8khz sample rate, 1 channel (mono audio)
     """
     while 1:
+        if inq.empty() and testmode:
+            return
         c2bits = inq.get()
         audio = config.codec2.c2.decode(c2bits)
         outq.put(audio)
@@ -498,13 +615,13 @@ def udp_send(sendto):
 
     sendto is the standard host,port) tuple like ("localhost",17000)
     """
-    def fn(config,inq,outq):
+    def udp_send_fn(config,inq,outq):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setblocking(False)
         while 1:
             bs = inq.get()
             sock.sendto( bs, sendto )
-    return fn
+    return udp_send_fn
 
 def udp_recv(port):
     """
@@ -512,7 +629,7 @@ def udp_recv(port):
     Maintains UDP datagram separation on the q
     Does not allow for responding to incoming packets. See udp_server for that.
     """
-    def fn(config,inq,outq):
+    def udp_recv_fn(config,inq,outq):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.bind(("0.0.0.0", port))
         # sock.setblocking(False)
@@ -523,7 +640,7 @@ def udp_recv(port):
             #but what do I do with conn data, anything?
             # print(_x(x))
             outq.put(x)
-    return fn
+    return udp_recv_fn
 
 def integer_decimate(i):
     """
@@ -531,12 +648,12 @@ def integer_decimate(i):
     e.g. integer_decimate(2) will cut a 16khz sampled audio signal to 8khz
     see integer_interpolate for the reverse
     """
-    def fn(config,inq,outq):
+    def int_decimate_fn(config,inq,outq):
         while 1:
             x = inq.get()
             de = x[::i]
             outq.put( x[::i] )
-    return fn
+    return int_decimate_fn
 
 def integer_interpolate(i):
     """
@@ -545,7 +662,7 @@ def integer_interpolate(i):
 
     starting to look uncomfortably like gnuradio, innit?
     """
-    def fn(config,inq,outq):
+    def int_interp_fn(config,inq,outq):
         import samplerate
         resampler = samplerate.Resampler('sinc_best', channels=1)
         while 1:
@@ -553,33 +670,56 @@ def integer_interpolate(i):
             y = resampler.process(x, i )
             z = numpy.array(y, dtype="<h")
             outq.put( z )
-    return fn
+    return int_interp_fn
+
+def chunk_and_pad_b(size):
+    """
+    Incoming bytes will get chunked into a particular size for downstream
+    nodes that don't do their own buffering - and padded with zeros if necessary.
+    """
+    def chunker_fn(config,inq,outq,testmode=False):
+        while 1:
+            if inq.empty() and testmode:
+                return
+            buf = inq.get()
+            while len(buf) > size:
+                outq.put(buf[:size])
+                buf = buf[size:]
+            if len(buf) > 0:
+                fill_needed = size - len(buf)
+                buf += b"\x00"*fill_needed
+                outq.put(buf)
+    return chunker_fn
 
 def chunker_b(size):
     """
     Incoming bytes will get chunked into a particular size for downstream
     nodes that don't do their own buffering
     """
-    def fn(config,inq,outq):
+    def chunker_fn(config,inq,outq,testmode=False):
         buf = b""
         while 1:
+            if inq.empty() and testmode:
+                return
             x = inq.get()
             buf += x
             while len(buf) > size:
                 outq.put(buf[:size])
                 buf = buf[size:]
-    return fn
+    return chunker_fn
 
 def np_convert(outtype):
     """
     Use numpy to convert incoming elements to a numpy type
     """
-    def fn(config,inq,outq):
+    def np_convert_fn(config,inq,outq,testmode=False):
         while 1:
+            if inq.empty() and testmode:
+                return
             x = inq.get()
             y = numpy.frombuffer(x, outtype)
             outq.put(y)
-    return fn
+    return np_convert_fn
 
 def check_ptt():
     """

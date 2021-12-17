@@ -7,7 +7,7 @@ import scapy.packet as sp
 import scapy.fields as sf
 import scapy.contrib.coap as scoap
 import scapy.contrib.mqtt as smqtt
-
+import binascii
 from scapy.compat import List, Union
 from scapy.modules.six import integer_types
 
@@ -35,7 +35,6 @@ class BENBytesField(sf.Field[int, List[int]]):
     """Because I need the internal representation to be big endian to
     be easier to work with, and sf.NBytesField parses as little endian
     for some reason
-    And then I switched away from it, oh well.
     """
     def __init__(self, name, default, sz):
         # type: (str, Optional[int], int) -> None
@@ -90,7 +89,7 @@ class M17Addr( sf.Field[Union[str,int], bytes] ):
         
 
     def i2repr(self, pkt, x):
-        return "%s (0x%x)"%(Address.decode(x), x)
+        return "'%s'"%(Address.decode(x))
 
     def i2m(self, pkt, x):
         return int.to_bytes(x, self.addrsize, "big")
@@ -124,12 +123,12 @@ class M17PacketType(sp.Packet):
     11..15 	Reserved (don’t care)
     """
     fields_desc = [
-            sf.BitEnumField('frametype',0,1, {0:"packet",1:"stream"}),
-            sf.BitEnumField('datamode',0,2, {0:"_resv",1:"D",2:"V",3:"V+D"}),
-            sf.BitField('enctype',0,2 ),
-            sf.BitField('encsubtype',0,2 ),
-            sf.BitField('can',0,4 ),
             sf.BitField('_resv',0,5 ),
+            sf.BitField('can',0,4 ),
+            sf.BitField('encsubtype',0,2 ),
+            sf.BitField('enctype',0,2 ),
+            sf.BitEnumField('datamode',0,2, {0:"_resv",1:"D",2:"V",3:"V+D"}),
+            sf.BitEnumField('frametype',0,1, {0:"packet",1:"stream"}),
             ]
 
 class M17LSF(sp.Packet):
@@ -137,20 +136,22 @@ class M17LSF(sp.Packet):
     #between LSF and data frames
     name = "M17LSF"
     fields_desc = [
-            M17Addr('dst', ""),
+            M17Addr('dst', ""), #can be either way
             M17Addr('src', 0x0),
-            M17PacketType,
+            M17PacketType, #16 bits
             # sf.ShortField('streamtype',0),
             BENBytesField('meta',0,14),
             ]
 class M17LSFandCRC(sp.Packet):
+    #not implemented yet
     name = "M17LSFandCRC"
     fields_desc = [
             M17LSF,
-            sf.FCSField('crc',0) 
+            # sf.FCSField('crc',0) 
             ]
 
-class M17StreamFrame(sp.Packet):
+class M17RF(sp.Packet):
+    #not implemented yet
     #needs syncs or other marker to distinguish 
     #between LSF and data frames
     name = "M17StreamFrame"
@@ -160,15 +161,86 @@ class M17StreamFrame(sp.Packet):
             BENBytesField('data', 0, 16),
             ]
 
-class M17IPStreamFrame(sp.Packet):
-    name = "M17IPStreamFrame"
+class DVRef(sp.Packet):
+    name = "DVRef"
+    magic_enum = {
+            b"CONN":"connect",
+            b"ACKN":"success",
+            b"NACK":"failure",
+            b"PING":"ping",
+            b"PONG":"pong",
+            b"DISC":"disconnect",
+            b"M17 ":"M17",
+            }
     fields_desc = [
-            BENBytesField('magic', b"M17 ", 4),
+            s.StrFixedLenEnumField('magic', b"CONN", 4, magic_enum),
+            s.ConditionalField(
+                M17Addr('callsign', 0x0), 
+                lambda pkt: pkt.magic in [ b"CONN", b"PING", b"PONG", b"DISC" ]
+                ),
+            s.ConditionalField(
+                s.XByteField('module', 0x0), 
+                lambda pkt: pkt.magic == b"CONN"
+                ),
+            ]
+
+    def mysummary(self):
+        mysum = self.undersummary() + self.sprintf("DVRef %DVRef.magic%")
+        if self.magic in [ b"CONN", b"PING", b"PONG", b"DISC" ]:
+            #disc only sometimes has callsign - only when requesting
+            #a disc, not acking one. no way to tell which is which on a
+            #per-packet basis.
+            mysum += self.sprintf(" %DVRef.callsign%")
+        if self.magic == b"CONN":
+            mysum += self.sprintf(" > %DVRef.module%")
+        return mysum
+
+    def undersummary(self):
+        mysum = ""
+        if isinstance(self.underlayer.underlayer, s.IP) and isinstance(self.underlayer, s.UDP):
+            mysum += self.underlayer.underlayer.sprintf("%IP.src%:%UDP.sport% > %IP.dst%:%UDP.dport% ")
+        elif isinstance(self.underlayer.underlayer, s.IPv6) and isinstance(self.underlayer, s.UDP):
+            mysum += self.underlayer.underlayer.sprintf("%IPv6.src%:%UDP.sport% > %IPv6.dst%:%UDP.dport% ")
+        elif isinstance(self.underlayer, s.UDP):
+            mysum += self.underlayer.sprintf("%UDP.sport% > %UDP.dport% ")
+        return mysum
+        
+
+class M17IP(sp.Packet):
+    name = "M17IP"
+    fields_desc = [
+            # BENBytesField('magic', b"M17 ", 4),
             sf.XShortField('sid',0),
-            M17LSF, #but no CRC
+            M17LSF, #but no CRC on IP LICHs - or maybe any LICHs
             #now that's just magic, ain't it? (embedding a full packet as a field)
-            sf.ShortField('fn',0), #if high bit set, this is last packet
+            sf.XShortField('fn',0), #if high bit set, this is last packet
+            # sf.ShortField('crc',0), 
             sf.FCSField('crc',0) 
+            ]
+    def mysummary(self):
+        mysum = self.undersummary()
+        # mysum = self.sprintf("M17[%M17IP.sid%, %M17IP.frametype%/%M17IP.datamode%, %M17IP.fn%] ")
+        mysum += self.sprintf("M17[%M17IP.sid%, %M17IP.fn%] ")
+        mysum += self.sprintf("%M17IP.src% > %M17IP.dst% ")
+        return mysum
+
+    def undersummary(self):
+        mysum = ""
+        if isinstance(self.underlayer, DVRef):
+            mysum += self.underlayer.undersummary()
+        elif isinstance(self.underlayer.underlayer, s.IP) and isinstance(self.underlayer, s.UDP):
+            mysum += self.underlayer.underlayer.sprintf("%IP.src%:%UDP.sport% %M17IP.src% > %IP.dst%:%UDP.dport% %M17IP.dst%")
+        elif isinstance(self.underlayer.underlayer, s.IPv6) and isinstance(self.underlayer, s.UDP):
+            mysum += self.underlayer.underlayer.sprintf("%IPv6.src%:%UDP.sport% %M17IP.src% > %IPv6.dst%:%UDP.dport% %M17IP.dst%")
+        elif isinstance(self.underlayer, s.UDP):
+            mysum += self.underlayer.sprintf("%UDP.sport% %M17IP.src% > %UDP.dport% %M17IP.dst% ")
+        return mysum
+
+
+class C2_3200(sp.Packet):
+    name = "C2_3200"
+    fields_desc = [
+            BENBytesField('data', 0, 16),
             ]
 
 def parse_utf_style_int(fourbytes):
@@ -271,41 +343,68 @@ s.bind_layers(M17PacketModeFrame, APRS, proto=0x2)
 s.bind_layers(M17PacketModeFrame, s.IP, proto=0x4)
 s.bind_layers(M17PacketModeFrame, M17SMS, proto=0x5)
 # s.bind_layers(M17PacketModeFrame, Winlink, proto=0x6)
+# s.bind_layers(s.UDP, M17IP, sport=17000)
+# s.bind_layers(s.UDP, M17IP, dport=17000)
+s.bind_layers(s.UDP, DVRef, dport=17000)
+s.bind_layers(s.UDP, DVRef, sport=17000)
+s.bind_layers(s.UDP, DVRef, sport=17000,dport=17000) #last one is the default when creating packets
+s.bind_layers(DVRef, M17IP, magic=b"M17 ")
+
+#bind_layers can only bind using keys from the low layer (e.g. UDP fields when binding UDP and DVRef)
+s.bind_layers(M17IP, C2_3200, frametype=1, datamode=2)
 
 if __name__ == "__main__":
     # lsfb = b"\x00\x00\x01\x61\xAE\x1F\x00\x00\x01\x61\xAE\x1F\x00\x05"
     # lsf = M17LSF(_pkt=lsfb)
-    lsf = M17LSF(dst="SP5WWP",src="W2FBI")
-    lsf.show()
-    ip = M17IPStreamFrame(
-            sid=0xbeef,
-            dst="KC1AWV",
-            src="W2FBI",
-            frametype="stream",
-            datamode="V+D",
-            enctype=0,
-            encsubtype=0,
-            can=0,
-            meta=b'C'*14,
-            fn=0x0,
-            crc=0xffff
-            ) / ("A"*8 + "B"*8)
-    ip.show()
-    scapy.utils.hexdump(ip)
+    # lsf = M17LSF(dst="SP5WWP",src="W2FBI")
+    # lsf.show()
+    # ip = M17IP(
+            # sid=0xbeef,
+            # dst="KC1AWV",
+            # src="W2FBI",
+            # frametype="stream",
+            # datamode="V+D",
+            # enctype=0,
+            # encsubtype=0,
+            # can=2,
+            # meta=b'C'*14,
+            # fn=0x3,
+            # crc=0xffff
+            # ) / ("A"*8 + "B"*8)
+    # ip.show()
+    # scapy.utils.hexdump(ip)
 
-    encap = M17PacketModeFrame()/s.IP()/s.UDP()/scoap.CoAP()
-    encap.show()
-    scapy.utils.hexdump(encap)
+    # encap = M17PacketModeFrame()/s.IP()/s.UDP()/scoap.CoAP()
+    # encap.show()
+    # scapy.utils.hexdump(encap)
 
-    encap = M17PacketModeFrame()/s.IP()/s.UDP()/smqtt.MQTT()/smqtt.MQTTPublish(topic='#',value='hello world')
-    encap.show()
-    scapy.utils.hexdump(encap)
+    # encap = M17PacketModeFrame()/s.IP()/s.UDP()/smqtt.MQTT()/smqtt.MQTTPublish(topic='#',value='hello world')
+    # encap.show()
+    # scapy.utils.hexdump(encap)
 
 
-    encap = M17PacketModeFrame()/M17SMS("ABCDEF")
-    encap.show()
-    scapy.utils.hexdump(encap)
+    # encap = M17PacketModeFrame()/M17SMS("ABCDEF")
+    # encap.show()
+    # scapy.utils.hexdump(encap)
 
-    encap = M17PacketModeFrame(_pkt=b"\x05ABCDEF")
-    encap.show()
-    scapy.utils.hexdump(encap)
+    # encap = M17PacketModeFrame(_pkt=b"\x05ABCDEF")
+    # encap.show()
+    # scapy.utils.hexdump(encap)
+    # examples = [
+            # s.IP(dst="0.0.0.1",src="0.0.0.2")/s.UDP(sport=17000,dport=17000)/DVRef(magic="CONN"),
+            # s.IP(dst="0.0.0.2",src="0.0.0.1")/s.UDP(sport=17000,dport=17000)/DVRef(magic="ACKN"),
+            # s.IP(dst="0.0.0.1",src="0.0.0.2")/s.UDP(sport=17000,dport=17000)/DVRef()/M17IP(),
+            # ]
+    # for p in examples:
+        # print(p.summary())
+    # for p in examples:
+        # P = s.IP(_pkt=bytes(p))
+        # print(P.summary())
+    # import pdb; pdb.set_trace()
+
+
+    # while 1:
+        # a=s.sniff(filter="udp and port 17000",timeout=2)
+    a = s.rdpcap("scapy_test.pcapng")
+    a.summary()
+

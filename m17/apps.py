@@ -36,13 +36,45 @@ def default_config(c2_mode):
 
 #reflector app (mycall)
 
-def m17_parrot(refcallsign, port=default_port):
+def parrot(mycall, refname, theirmodule):
     #A parrot service for M17 - it's a full client that records and plays back after incoming stream is over PTT is released
-    ...
+    port=17000
+    mymodule="T"
+    assert( refname.startswith("M17-") and len(refname) <= 7 )
+    #should also be able to look up registered port in dns at some point
+    host = network.m17ref_name2host(refname)
+
+    myrefmod = "%s %s"%(mycall,mymodule)
+    c = client_blocks(myrefmod,refname, theirmodule,peer=(host,port))
+    chain = [c.receiver(), m17parse, m17frames2streams, tee('stream'), teestreamfile('parrot'), m17streams2frames, 
+            m17rewriter(dst="M17-M17 Z",src="W2FBI   P", streamid=random.randint(1,2**16-1)),
+            # throttle(26), 
+            #should be 25, but i'm trying 26 to try to workaround some stuttering in a temporary way 
+            #also you totally don't need throttles for mrefd reflectors right now xD
+            tobytes, c.sender()]
+    config = {}
+    c.start()
+    modular(config, [chain])
+
+
+def streams_toS3(mycall, refname,theirmodule):
+    port=17000
+    mymodule="T"
+    assert( refname.startswith("M17-") and len(refname) <= 7 )
+    #should also be able to look up registered port in dns at some point
+    host = network.m17ref_name2host(refname)
+
+    myrefmod = "%s %s"%(mycall,mymodule)
+    c = client_blocks(myrefmod,refname, theirmodule,peer=(host,port))
+    rx_chain = [c.receiver(), m17parse, m17frames2streams, tee(''), tee_s3uploader_m17streams('m17','transcribeme'), null ]
+    # rx_chain = [m17parse,... ]
+    config = {}
+    c.start()
+    modular(config, [rx_chain])
 
 def stream_saver(mycall, refname,theirmodule):
     port=17000
-    mymodule="T"
+    mymodule="S"
     assert( refname.startswith("M17-") and len(refname) <= 7 )
     #should also be able to look up registered port in dns at some point
     if refname != "M17-XVF":
@@ -52,8 +84,8 @@ def stream_saver(mycall, refname,theirmodule):
     # print(host)
 
     myrefmod = "%s %s"%(mycall,mymodule)
-    c = client_blocks(myrefmod,refname, theirmodule,peer=(host,port))
-    rx_chain = [c.receiver(), m17parse, tee('frame'), m17frames2streams, tee('stream'), teestreamfile('streamtest'), null ]
+    c = client_blocks(myrefmod,refname, theirmodule,peer=(host,port),bind=("0.0.0.0",17001))
+    rx_chain = [c.receiver(), m17parse, m17frames2streams, tee('stream'), teestreamfile('saved'), null ]
     # rx_chain = [m17parse,... ]
     config = {}
     c.start()

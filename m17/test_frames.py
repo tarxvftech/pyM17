@@ -3,11 +3,11 @@ import unittest
 try:
     from address import Address
     from misc import example_bytes
-    from frames import initialLICH, regularFrame, ipFrame
+    from frames import initialLICH, regularFrame, ipFrame, crc
 except:
     from .address import Address
     from .misc import example_bytes
-    from .frames import initialLICH, regularFrame, ipFrame
+    from .frames import initialLICH, regularFrame, ipFrame, crc
 
 class test_frame_encodings(unittest.TestCase):
     def test_lich(self):
@@ -51,4 +51,5 @@ class test_frame_encodings(unittest.TestCase):
                 );
         y = bytes(x)
         z = ipFrame.from_bytes(y)
+        assert crc(y) == 0 #check crc is valid
         assert z == x

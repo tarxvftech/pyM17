@@ -1,4 +1,5 @@
 
+import logging
 import bitstruct
 try:
     from .address import Address
@@ -8,6 +9,34 @@ except:
     from address import Address
     from const import *
     from misc import _x, chunk, example_bytes
+
+crc_table = []
+
+#crc stuff lifted gratefully from n7tae's mrefd
+crc_poly=0x5935
+crc_start=0xFFFF
+def crc_init():
+    for i in range(256):
+        crc = 0
+        c = i << 8
+        for j in range(8):
+            if (crc ^ c) & 0x8000:
+                crc = ( crc << 1 ) ^ crc_poly;
+            else:
+                crc = crc << 1;
+            c = c << 1;
+        crc_table.append(crc)
+
+def crc(data:bytes):
+    crc = crc_start
+    for a in range(len(data)):
+        crc = (crc << 8) ^ crc_table[ ((crc >> 8) ^ data[a]) & 0x00FF ];
+    return (crc & 0xffff)
+
+crc_init()
+assert crc(b"") == 0xffff
+assert crc(b"A") == 0x206e
+assert crc(b"123456789") == 0x772b
 
 class initialLICH:
     """
@@ -49,7 +78,11 @@ class initialLICH:
         b += bitstruct.pack("u48",self.src.addr)
         b += bitstruct.pack("u16",self.streamtype)
         b += self.nonce
+        assert len(self.nonce) * 8 == 112
+        assert len(b) == self.sz
+        # b += b"\x00\x00"
         return b
+    
 
     def chunks(self):
         me = bytes(self)
@@ -67,6 +100,10 @@ class initialLICH:
         d["dst"] = Address(addr=d["dst"])
         d["src"] = Address(addr=d["src"])
         d["nonce"] = data[14:14+14]
+
+        embedded_crc = data[28:30]
+        #currently ignores two bytes crc, will accept even with bad crc
+
         return d
 
     @staticmethod
@@ -120,7 +157,9 @@ class regularFrame:
         """
         high bit of 16 bit frame number indicates last frame
         """
+        # print("Frame number: ", hex(self.frame_number))
         return self.frame_number & (1<<15)
+
     def __eq__(self, other):
         return bytes(self) == bytes(other)
 
@@ -137,8 +176,7 @@ class regularFrame:
             b += self.lich_chunk
         b += bitstruct.pack("u16", self.frame_number)
         b += bytes(self.payload)
-        b += bytes([0]*2) #crc16
-        # b += bitstruct.pack("u4",0)
+        b += crc(b).to_bytes(2,"big")
         return b
 
     @classmethod
@@ -188,7 +226,7 @@ class ipFrame(regularFrame):
         b += bytes(self.LICH)
         b += bitstruct.pack("u16", self.frame_number)
         b += bytes(self.payload)
-        b += bytes([0]*2) #crc16, TODO
+        b += crc(b).to_bytes(2,"big")
         assert self.sz == len(b)
         return b
 
@@ -208,6 +246,9 @@ class ipFrame(regularFrame):
         d["LICH"] = initialLICH.from_bytes(data[lich_start:lich_end])
         d["frame_number"]= bitstruct.unpack("u16", data[lich_end:payload_start])[0]
         d["payload"] = data[payload_start:payload_end]
+        embedded_crc = data[payload_end:payload_end+2]
+        if crc(data) != 0:
+            logging.warning("invalid CRC")
         # d["crc"] = bitstruct.unpack("u16", ...
         return d
 
@@ -242,4 +283,4 @@ class M17_Frametype(int):
             (2, "enc_subtype"),
             (7, "reserved"),
             ]
-
+standard_voice_stream = 5

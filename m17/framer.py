@@ -52,5 +52,7 @@ class M17_IPFramer(M17_RFFramer):
             if self.packet_count >= 2**16:
                 self.packet_count = 0
             pkts.append(pkt)
+
+        # pkts[-1].frame_number &= (1<<15) #set last frame number 
         return pkts
 
