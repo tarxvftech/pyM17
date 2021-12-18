@@ -10,6 +10,8 @@ import readline
 import threading
 import multiprocessing
 
+#TODO: move all imports into respective blocks as needed
+
 from .address import Address
 from .frames import initialLICH, ipFrame, standard_data_packet
 from .framer import M17_IPFramer

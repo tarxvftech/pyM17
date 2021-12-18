@@ -246,8 +246,8 @@ class ipFrame(regularFrame):
         lich_start = 6
         lich_end = lich_start+initialLICH.sz
         d["LICH"] = initialLICH.from_bytes(data[lich_start:lich_end])
-        d["frame_number"]= bitstruct.unpack("u16", data[lich_end:payload_start])[0]
         payload_start = lich_end+2
+        d["frame_number"]= bitstruct.unpack("u16", data[lich_end:payload_start])[0]
         if d["LICH"].streamtype == 5:
             payload_end = payload_start+16
         else:

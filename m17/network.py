@@ -232,7 +232,7 @@ class n7tae_protocol:
                 if bs[:4] != b"CONN":
                     #drop it on the floor? or nack it?
                     # self.nack(peer)
-                    pp(self.connections)
+                    # pp(self.connections)
                     self.log.warning("packet from unregistered peer %s:%d %s..."%(peer[0],peer[1], binascii.hexlify(bs[:16])))
                     return None
         except BlockingIOError as e:
