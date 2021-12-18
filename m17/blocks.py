@@ -17,7 +17,7 @@ from .frames import initialLICH, ipFrame, standard_data_packet
 from .framer import M17_IPFramer
 from .streams import M17_IPStream
 from .const import *
-from .misc import example_bytes,_x,chunk,dattr,encode_utf_style_int
+from .misc import example_bytes,_x,chunk,dattr,encode_utf_style_int,parse_utf_style_int
 from .blocks import *
 import m17.network as network
 
@@ -372,6 +372,23 @@ def null(config, inq, outq):
     """
     while 1:
         x = inq.get()
+
+
+def m17frame_extractpayload(config, inq, outq):
+    while 1:
+        x = inq.get()
+        outq.put( x.payload )
+
+def m17packet_payload2body(config, inq, outq):
+    """
+    """
+    while 1:
+        x = inq.get()
+        sz,val = parse_utf_style_int(x)
+        #sz is how many bytes the utf-style-int takes up
+        #val is the actual value of that int
+        #in this case, it represents the Packet sub-format (raw, APRS, M17SMS, etc)
+        outq.put( x[sz:] )
 
 
 def tee(header):

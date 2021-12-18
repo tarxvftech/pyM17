@@ -140,7 +140,7 @@ class n7tae_protocol:
         data = b"CONN" + self.mycall_b + module.encode("ascii")
         self.send(data, peer)
 
-    def disco(self, peer):
+    def disco(self, peer, sendcall=True):
         """
         The official protocol assumes there's only one client per peer 
         (ipv6 is a clear winner to avoid NAT then, eh?)
@@ -149,7 +149,9 @@ class n7tae_protocol:
         """
 
         self.log.info("DISC")
-        data = b"DISC" + self.mycall_b 
+        data = b"DISC"
+        if sendcall:
+            data += self.mycall_b 
         self.send(data, peer)
 
     def connect_in(self, pkt, peer):

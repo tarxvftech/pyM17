@@ -33,7 +33,9 @@ def M17SMS(mycall, refname, theirmodule):
     n7tae.connect(refname,theirmodule)
     # rxchain = [ shell.receiver(), m17packetframe, tobytes, n7tae.sender() ]
     rxchain = [ shell.receiver(), m17packetframe, tobytes, n7tae.sender() ]
-    txchain = [ n7tae.receiver(), m17parse, shell.sender() ]
+    txchain = [ n7tae.receiver(), 
+            m17parse, m17frame_extractpayload, m17packet_payload2body, toutf8,
+            shell.sender() ]
     modules, wait = modular(config, [rxchain,txchain])
     shell.cmdloop()
     for proc in modules['processes']:
