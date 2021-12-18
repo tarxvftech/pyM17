@@ -181,10 +181,11 @@ class n7tae_protocol:
             self.log.warning("%s (%s) sent DISC too many times, deleting connection"%(peer, theircall))
             self.del_connection(peer)
         else:
-            self.disco(peer)
+            if addr:
+                self.disco(peer,sendcall=False)
             conn = self.connections[peer]
             #TODO gets into loops with two peers
-            # self.connect(conn.call, conn.module, conn.original_peer)
+            self.connect(conn.call, conn.module, conn.original_peer)
 
     def pong(self, peer=None):
         data = b"PONG" + self.mycall_b 
