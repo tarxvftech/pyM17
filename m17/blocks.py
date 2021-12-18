@@ -64,9 +64,13 @@ def m17rewriter(*args,**kwargs):
             if sid:
                 frame.streamid = sid
             if dst:
-                frame.LICH.dst = Address(callsign=dst)
+                if not isinstance(dst,Address):
+                    dst = Address(callsign=dst)
+                frame.LICH.dst = dst
             if src:
-                frame.LICH.src = Address(callsign=src)
+                if not isinstance(src,Address):
+                    src = Address(callsign=src)
+                frame.LICH.src = src
             outq.put(frame)
     return m17rewriter_fn
 
@@ -203,6 +207,7 @@ class bot(TwoWayBlock):
         pass
 
 class textshell(cmd.Cmd,bot):
+    #https://github.com/python/cpython/blob/3.10/Lib/cmd.py
     #needs a way to print incoming messages in realtime
     #so probably needs some threading
     #hey, want to have IRC over M17? 

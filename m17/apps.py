@@ -52,23 +52,23 @@ def echoshell(callsign):
     # wait(modules)
 
 
-def parrot(mycall, refname, theirmodule):
+def parrot(refname, theirmodule):
     #A parrot service for M17 - it's a full client that records and plays back after incoming stream is over PTT is released
-    port=17000
-    mymodule="T"
-    assert( refname.startswith("M17-") and len(refname) <= 7 )
-    #should also be able to look up registered port in dns at some point
-    host = network.m17ref_name2host(refname)
+    mycall = "MP4RROT"
+    mymodule = "Z"
 
     me = Address(callsign=mycall)
     me.set_reflector_module(mymodule)
+
     them = Address(callsign=refname)
     them.set_reflector_module(theirmodule)
+
     c = client_blocks(mycall)
+    c.connect(refname,theirmodule)
     chain = [c.receiver(), m17parse, m17voiceframes2streams, tee('stream'), teestreamfile('parrot'), m17streams2frames, 
             m17rewriter(src=me,dst=them, streamid=random.randint(1,2**16-1)),
             throttle(27), 
-            #should be 25, but i'm trying a little higher to try to workaround some stuttering in a temporary way 
+            #nominally 25, but i'm trying a little higher to try to workaround some stuttering in a temporary way 
             #also you totally don't need throttles for most m17 clients, they will just buffer all the packets and play them back xD
             tobytes, c.sender()]
     config = {}

@@ -1,2 +1,7 @@
 __pycache__/
 M17.egg-info/
+m17.egg-info/
+example_streams/
+dist/
+build/
+env/
