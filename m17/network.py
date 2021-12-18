@@ -181,7 +181,8 @@ class n7tae_protocol:
         else:
             self.disco(peer)
             conn = self.connections[peer]
-            self.connect(conn.call, conn.module, conn.original_peer)
+            #TODO gets into loops with two peers
+            # self.connect(conn.call, conn.module, conn.original_peer)
 
     def pong(self, peer=None):
         data = b"PONG" + self.mycall_b 
