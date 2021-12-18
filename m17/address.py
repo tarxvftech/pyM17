@@ -64,6 +64,7 @@ class Address:
 
 
     """
+    maxlen = 9
     def __init__(self, **kwargs):
         for k,v in kwargs.items():
             if k in ["addr","callsign"]:
@@ -71,6 +72,8 @@ class Address:
         self.callsign = self.callsign.upper() if hasattr(self,"callsign") else self.decode(self.addr)
         self.addr = self.addr if hasattr(self,"addr") else self.encode(self.callsign)
 
+    def __repr__(self):
+        return "Address(callsign='%s',addr=0x%06x)"%(self.callsign,self.addr)
     def __str__(self):
         return "'%s' (0x%06x)"%(self.callsign,self.addr)
     def __bytes__(self):
@@ -101,6 +104,7 @@ class Address:
         #return an Address encoded for DMR using database lookup?
         #or jsut the ID as an int?
         ...
+
     @staticmethod
     def from_dmr_id(dmr_int):
         #return an Address encoded for callsign using dmr database lookup to get callsign
@@ -115,6 +119,27 @@ class Address:
         return self.callsign.startswith("BM") and self.callsign[1:].isdigit()
     def is_dstar_reflector(self):
         return self.callsign.startswith("REF")
+
+    def __getitem__(self, key):
+        return self.callsign.ljust(9," ")[key]
+
+    def __setitem__(self, key, value):
+        x = list(self.callsign.ljust(9," "))
+        x[key] = value
+        self.callsign = "".join(x)
+        self.addr = self.encode(self.callsign)
+
+    def __len__(self):
+        return len(self.callsign.rstrip())
+
+    def clear_reflector_module(self):
+        self[self.maxlen-1] = " "
+    def set_reflector_module(self, module):
+        if len(self) > self.maxlen-2: #needs a space too, to be considered a module i think
+            raise(Exception(""))
+        else:
+            self[self.maxlen-1] = module
+            self.addr = self.encode(self.callsign)
 
     @staticmethod
     def encode(callsign):
@@ -133,7 +158,7 @@ class Address:
         if num >= 40**9:
             raise(Exception("Not a callsign"))
         chars = []
-        while num > 0:
+        while num > 0: #stops when only spaces remain of course.
             idx = int(num%40)
             c =  callsign_alphabet[idx] 
             chars.append(c)

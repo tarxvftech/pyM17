@@ -116,5 +116,68 @@ def c_array_init(bs:bytes):
     print("}")
     #cat filename |grep -o 'x' |wc -l to know how big it is
 
+def parse_utf_style_int(fourbytes):
+    #https://helloacm.com/how-to-validate-utf-8-encoding-the-simple-utf-8-validation-algorithm/
+    #https://github.com/JuliaStrings/utf8proc/blob/master/utf8proc.c#L125
+    #stolen from utf8proc, which is under MIT
+    #https://github.com/JuliaStrings/utf8proc/blob/master/LICENSE.md
+    # cont = ((b) & 0xc0) == 0x80)
+    if isinstance(fourbytes, (bytes,list)):
+        b = fourbytes[:4] 
+    else:
+        b = bytes([fourbytes])
+    if b[0] < 0x80: 
+        #< 0b1000_0000
+        return (1,b[0])
+
+    elif b[0] < 0xe0:
+        #< 0b1110_0000
+        #0b110
+        return (2, ((b[0] & 0x1f)<<6) |  (b[1] & 0x3f))
+
+    elif b[0] < 0xf0:
+        #< 0b1111_0000
+        return (3, ((b[0] & 0xf)<<12) | ((b[1] & 0x3f)<<6)  |  (b[2] & 0x3f))
+
+    else:
+        return (4, ((b[0] & 0x7)<<18) | ((b[1] & 0x3f)<<12) | ((b[2] & 0x3f)<<6) | (b[3] & 0x3f))
+
+def encode_utf_style_int(length_in_bytes):
+    #stolen from utf8proc, which is under MIT
+    #https://github.com/JuliaStrings/utf8proc/blob/master/LICENSE.md
+    n = length_in_bytes
+    if n < 0:
+        return bytes([0])
+    elif n < 0x80:
+        return bytes([n])
+    elif n < 0x800:
+        b = []
+        b.append(0xc0 + (n >> 6))
+        b.append(0x80 + (n & 0x3f))
+        return bytes(b)
+    elif n < 0x10000:
+        b = []
+        b.append(0xe0 + (n >> 12))
+        b.append(0x80 + ((n>>6) & 0x3f))
+        b.append(0x80 + (n & 0x3f))
+        return bytes(b)
+    elif n < 0x110000:
+        b = []
+        b.append(0xf0 + (n >> 18))
+        b.append(0x80 + ((n >> 12) & 0x3f))
+        b.append(0x80 + ((n >> 6) & 0x3f))
+        b.append(0x80 + (n & 0x3f))
+        return bytes(b)
+    else:
+        raise(Exception("Can't store value %d, won't fit"%(n)))
+
+"""
+for i in range(0,1114111, 1):
+    x = encode_utf_style_int(i)
+    # print(i,x)
+    blen,val = parse_utf_style_int(x)
+    assert val == i
+"""
+
 if __name__ == "__main__":
     vars()[sys.argv[1]](*sys.argv[2:])

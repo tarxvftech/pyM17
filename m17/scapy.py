@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from m17.address import Address
+import m17.misc as misc
 import scapy
 import scapy.all as s
 import scapy.packet as sp
@@ -243,85 +244,23 @@ class C2_3200(sp.Packet):
             BENBytesField('data', 0, 16),
             ]
 
-def parse_utf_style_int(fourbytes):
-    #https://helloacm.com/how-to-validate-utf-8-encoding-the-simple-utf-8-validation-algorithm/
-    #https://github.com/JuliaStrings/utf8proc/blob/master/utf8proc.c#L125
-    #stolen from utf8proc, which is under MIT
-    #https://github.com/JuliaStrings/utf8proc/blob/master/LICENSE.md
-    # cont = ((b) & 0xc0) == 0x80)
-    if isinstance(fourbytes, (bytes,list)):
-        b = fourbytes[:4] 
-    else:
-        b = bytes([fourbytes])
-    if b[0] < 0x80: 
-        #< 0b1000_0000
-        return (1,b[0])
-
-    elif b[0] < 0xe0:
-        #< 0b1110_0000
-        #0b110
-        return (2, ((b[0] & 0x1f)<<6) |  (b[1] & 0x3f))
-
-    elif b[0] < 0xf0:
-        #< 0b1111_0000
-        return (3, ((b[0] & 0xf)<<12) | ((b[1] & 0x3f)<<6)  |  (b[2] & 0x3f))
-
-    else:
-        return (4, ((b[0] & 0x7)<<18) | ((b[1] & 0x3f)<<12) | ((b[2] & 0x3f)<<6) | (b[3] & 0x3f))
-
-def encode_utf_style_int(length_in_bytes):
-    #stolen from utf8proc, which is under MIT
-    #https://github.com/JuliaStrings/utf8proc/blob/master/LICENSE.md
-    n = length_in_bytes
-    if n < 0:
-        return bytes([0])
-    elif n < 0x80:
-        return bytes([n])
-    elif n < 0x800:
-        b = []
-        b.append(0xc0 + (n >> 6))
-        b.append(0x80 + (n & 0x3f))
-        return bytes(b)
-    elif n < 0x10000:
-        b = []
-        b.append(0xe0 + (n >> 12))
-        b.append(0x80 + ((n>>6) & 0x3f))
-        b.append(0x80 + (n & 0x3f))
-        return bytes(b)
-    elif n < 0x110000:
-        b = []
-        b.append(0xf0 + (n >> 18))
-        b.append(0x80 + ((n >> 12) & 0x3f))
-        b.append(0x80 + ((n >> 6) & 0x3f))
-        b.append(0x80 + (n & 0x3f))
-        return bytes(b)
-    else:
-        raise(Exception("Can't store value %d, won't fit"%(n)))
-
-"""
-for i in range(0,1114111, 1):
-    x = encode_utf_style_int(i)
-    # print(i,x)
-    blen,val = parse_utf_style_int(x)
-    assert val == i
-"""
 
 class UTFStyleIntField( sf.Field[int, bytes] ):
 # class UTFStyleIntField( sf.Field[Union[str,int], bytes] ):
 #maybe support protocol names as a string?
 
     def i2m(self, pkt, x):
-        return encode_utf_style_int(x)
+        return misc.encode_utf_style_int(x)
 
     def m2i(self, pkt, x):
-        blen,val = parse_utf_style_int(x)
+        blen,val = misc.parse_utf_style_int(x)
         return val
 
     def addfield(self, pkt, s, val):
         return s + self.i2m(pkt,val)
 
     def getfield(self, pkt, s):
-        blen,val = parse_utf_style_int(s)
+        blen,val = misc.parse_utf_style_int(s)
         return (s[blen:], val)
 
 class M17PacketModeDataType(UTFStyleIntField):
@@ -336,6 +275,9 @@ class M17PacketModeFrame(sp.Packet):
 class M17SMS(s.Raw):
     name = "M17SMS"
 
+#bind_layers can only bind using keys from the low layer (e.g. UDP fields when binding UDP and DVRef)
+s.bind_layers(M17IP, C2_3200, frametype=1, datamode=2)
+s.bind_layers(M17IP, M17PacketModeFrame, frametype=0)
 s.bind_layers(M17PacketModeFrame, s.Raw, proto=0x0)
 s.bind_layers(M17PacketModeFrame, AX25, proto=0x1)
 s.bind_layers(M17PacketModeFrame, APRS, proto=0x2)
@@ -343,15 +285,19 @@ s.bind_layers(M17PacketModeFrame, APRS, proto=0x2)
 s.bind_layers(M17PacketModeFrame, s.IP, proto=0x4)
 s.bind_layers(M17PacketModeFrame, M17SMS, proto=0x5)
 # s.bind_layers(M17PacketModeFrame, Winlink, proto=0x6)
+
+#raw M17, no reflector - can be enabled safely, but won't be default
+#i don't think (2021 12 17) anyone out there did raw M17 but me with this python, so keeping disabled for now
 # s.bind_layers(s.UDP, M17IP, sport=17000)
 # s.bind_layers(s.UDP, M17IP, dport=17000)
+# s.bind_layers(s.UDP, M17IP, dport=17000, sport=17000) 
+
+#with reflector
 s.bind_layers(s.UDP, DVRef, dport=17000)
 s.bind_layers(s.UDP, DVRef, sport=17000)
 s.bind_layers(s.UDP, DVRef, sport=17000,dport=17000) #last one is the default when creating packets
 s.bind_layers(DVRef, M17IP, magic=b"M17 ")
 
-#bind_layers can only bind using keys from the low layer (e.g. UDP fields when binding UDP and DVRef)
-s.bind_layers(M17IP, C2_3200, frametype=1, datamode=2)
 
 if __name__ == "__main__":
     # lsfb = b"\x00\x00\x01\x61\xAE\x1F\x00\x00\x01\x61\xAE\x1F\x00\x05"

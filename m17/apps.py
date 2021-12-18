@@ -11,30 +11,38 @@ from .const import *
 from .misc import example_bytes,_x,chunk,dattr
 from .blocks import *
 import m17.network as network
+from m17.address import Address
 
-
-
-def default_config(c2_mode):
-    c2,conrate,bitframe = codec2setup(c2_mode)
-    print("conrate, bitframe = [%d,%d]"%(conrate,bitframe) )
-
-    config = dattr({
-        "m17":{
-            "dst":"",
-            "src":"",
-            },
-        "vox":{
-            "silence_threshold":10, #that's measured in queue packets
-            },
-        "codec2":{
-            "c2":c2,
-            "conrate":conrate,
-            "bitframe":bitframe,
-            },
-        })
-    return config
 
 #reflector app (mycall)
+
+def M17SMS(callsign):
+    shell = textshell(callsign)
+    config = default_config(3200)
+    config.m17.dst = refname
+    config.m17.dst.set_reflector_module(theirmodule)
+    config.m17.src = mycall
+    config.m17.src.set_reflector_module("S")
+
+    n7tae = client_blocks(config.m17.src, refname, theirmodule, peer=(host,port), bind=("0.0.0.0",17013))
+    #hmmm. client_blocks and the protocol class itself need a rewrite to handle this, eh?
+    rxchain = [ shell.receiver(), m17packetframe, tobytes, n7tae.sender() ]
+    txchain = [ n7tae.receiver(), m17parse, shell.sender() ]
+    modules, wait = modular(config, [chain])
+    shell.cmdloop()
+    for proc in modules['processes']:
+        proc["process"].terminate()
+
+def echoshell(callsign):
+    shell = textshell(callsign)
+    chain = [shell.receiver(), shell.sender() ]
+    config = {}
+    modules, wait = modular(config, [chain])
+    shell.cmdloop()
+    for proc in modules['processes']:
+        proc["process"].terminate()
+    # wait(modules)
+
 
 def parrot(mycall, refname, theirmodule):
     #A parrot service for M17 - it's a full client that records and plays back after incoming stream is over PTT is released
@@ -44,17 +52,21 @@ def parrot(mycall, refname, theirmodule):
     #should also be able to look up registered port in dns at some point
     host = network.m17ref_name2host(refname)
 
-    myrefmod = "%s %s"%(mycall,mymodule)
-    c = client_blocks(myrefmod,refname, theirmodule,peer=(host,port))
-    chain = [c.receiver(), m17parse, m17frames2streams, tee('stream'), teestreamfile('parrot'), m17streams2frames, 
-            m17rewriter(dst="M17-M17 Z",src="W2FBI   P", streamid=random.randint(1,2**16-1)),
-            # throttle(26), 
-            #should be 25, but i'm trying 26 to try to workaround some stuttering in a temporary way 
-            #also you totally don't need throttles for mrefd reflectors right now xD
+    me = Address(callsign=mycall)
+    me.set_reflector_module(mymodule)
+    them = Address(callsign=refname)
+    them.set_reflector_module(theirmodule)
+    c = client_blocks(me,refname, theirmodule,peer=(host,port))
+    chain = [c.receiver(), m17parse, m17voiceframes2streams, tee('stream'), teestreamfile('parrot'), m17streams2frames, 
+            m17rewriter(src=me,dst=them, streamid=random.randint(1,2**16-1)),
+            throttle(27), 
+            #should be 25, but i'm trying a little higher to try to workaround some stuttering in a temporary way 
+            #also you totally don't need throttles for most m17 clients, they will just buffer all the packets and play them back xD
             tobytes, c.sender()]
     config = {}
     c.start()
-    modular(config, [chain])
+    modules, wait = modular(config, [chain])
+    wait(modules)
 
 
 def streams_toS3(mycall, refname,theirmodule):
@@ -64,13 +76,16 @@ def streams_toS3(mycall, refname,theirmodule):
     #should also be able to look up registered port in dns at some point
     host = network.m17ref_name2host(refname)
 
-    myrefmod = "%s %s"%(mycall,mymodule)
-    c = client_blocks(myrefmod,refname, theirmodule,peer=(host,port))
-    rx_chain = [c.receiver(), m17parse, m17frames2streams, tee(''), tee_s3uploader_m17streams('m17','transcribeme'), null ]
-    # rx_chain = [m17parse,... ]
+    me = Address(callsign=mycall)
+    me.set_reflector_module(mymodule)
+    them = Address(callsign=refname)
+    them.set_reflector_module(theirmodule)
+    c = client_blocks(me)
+    rx_chain = [c.receiver(), m17parse, m17voiceframes2streams, tee(''), tee_s3uploader_m17streams('m17','transcribeme'), null ]
     config = {}
     c.start()
-    modular(config, [rx_chain])
+    modules, wait = modular(config, [rx_chain])
+    wait(modules)
 
 def stream_saver(mycall, refname,theirmodule):
     port=17000
@@ -83,40 +98,42 @@ def stream_saver(mycall, refname,theirmodule):
         host = "127.0.0.1"
     # print(host)
 
-    myrefmod = "%s %s"%(mycall,mymodule)
-    c = client_blocks(myrefmod,refname, theirmodule,peer=(host,port),bind=("0.0.0.0",17001))
-    rx_chain = [c.receiver(), m17parse, m17frames2streams, tee('stream'), teestreamfile('saved'), null ]
+    me = Address(callsign=mycall)
+    me.set_reflector_module(mymodule)
+    them = Address(callsign=refname)
+    them.set_reflector_module(theirmodule)
+    c = client_blocks(me)
+    rx_chain = [c.receiver(), m17parse, m17voiceframes2streams, tee('stream'), teestreamfile('saved'), null ]
     # rx_chain = [m17parse,... ]
     config = {}
     c.start()
-    modular(config, [rx_chain])
+    modules, wait = modular(config, [rx_chain])
+    wait(modules)
 
 def client(mycall,mymodule,refname,theirmodule,port=default_port,mode=3200):
     mode=int(mode) #so we can call modular_client straight from command line
     port=int(port)
-    if( refname.startswith("M17-") and len(refname) <= 7 ):
-        #should also be able to look up registered port in dns
-        host = network.m17ref_name2host(refname)
-        print(host)
-        #fallback to fetching json if its not in dns already
-    else:
-        host = "127.0.0.1"
-        print("not a valid ref, falling back to localhost")
-        # raise(NotImplementedError)
-    myrefmod = "%s %s"%(mycall,mymodule)
-    c = client_blocks(myrefmod,refname, theirmodule,peer=(host,port))
 
-    tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, c.sender()]
+    me = Address(callsign=mycall)
+    me.set_reflector_module(mymodule)
+    them = Address(callsign=refname)
+    them.set_reflector_module(theirmodule)
+    c = client_blocks(me)
+
+    tx_chain = [mic_audio, codec2enc, vox, m17voiceframe, tobytes, c.sender()]
     rx_chain = [c.receiver(), m17parse, payload2codec2, codec2dec, spkr_audio]
     config = default_config(mode)
     config.m17.dst = "%s %s"%(refname,theirmodule)
     config.m17.src = mycall
     print(config)
     c.start()
-    modular(config, [tx_chain, rx_chain])
+    modules, wait = modular(config, [tx_chain, rx_chain])
+    wait(modules)
 
 
-## OLD 
+##### OLD AND NOT MAINTAINED BUT KEPT BECAUSE THEY DID INTERESTING THINGS #####
+
+
 def _udp_mirror(refcallsign, port=default_port):
     # reflects your own UDP packets back to you after a delay
     port=int(port)
@@ -166,21 +183,24 @@ def _to_icecast(icecast_url, mode=3200,port=default_port):
     rx_chain = [udp_recv(port), m17parse, payload2codec2, codec2dec, ffmpeg(icecast_url)]
     # rx_chain = [udp_recv(port), m17parse, tee('m17'), payload2codec2, codec2dec, ffmpeg(icecast_url)]
     config = default_config(mode)
-    modular(config, [rx_chain])
+    modules, wait = modular(config, [rx_chain])
+    wait(modules)
 
 def _to_pcm(mode=3200,port=default_port):
     mode=int(mode) #so we can call modular_client straight from command line
     port=int(port)
     rx_chain = [udp_recv(port), m17parse, tee('m17'), payload2codec2, codec2dec, teefile('m17.raw'), null]
     config = default_config(mode)
-    modular(config, [rx_chain])
+    modules, wait = modular(config, [rx_chain])
+    wait(modules)
 
 def _recv_dump(mode=3200,port=default_port):
     mode=int(mode) #so we can call modular_client straight from command line
     port=int(port)
     rx_chain = [udp_recv(port), teefile("rx"), m17parse, tee('M17'), payload2codec2, teefile('out.c2_3200'),codec2dec, teefile('out.raw'), spkr_audio]
     config = default_config(mode)
-    modular(config, [rx_chain])
+    modules, wait = modular(config, [rx_chain])
+    wait(modules)
 
 def _voip(host="localhost",port=default_port,voipmode="full",mode=3200,src="W2FBI",dst="SP5WWP"):
     mode=int(mode) #so we can call modular_client straight from command line
@@ -192,7 +212,7 @@ def _voip(host="localhost",port=default_port,voipmode="full",mode=3200,src="W2FB
     #this means the tx and rx paths are completely separate, which is,
     # if nothing else, simple to reason about
 
-    tx_chain = [mic_audio, codec2enc, vox, m17frame, tobytes, udp_send((host,port))]
+    tx_chain = [mic_audio, codec2enc, vox, m17voiceframe, tobytes, udp_send((host,port))]
     rx_chain = [udp_recv(port), m17parse, payload2codec2, codec2dec, spkr_audio]
     if voipmode == "tx":
         #disable the rx chain
@@ -208,7 +228,8 @@ def _voip(host="localhost",port=default_port,voipmode="full",mode=3200,src="W2FB
     config.m17.src = src
     print(config)
 
-    modular(config, [tx_chain, rx_chain])
+    modules, wait = modular(config, [tx_chain, rx_chain])
+    wait(modules)
 
 def _echolink_bridge(mycall,mymodule,refname,refmodule,refport=default_port,mode=3200):
     mode=int(mode) #so we can call modular_client straight from command line
@@ -222,14 +243,15 @@ def _echolink_bridge(mycall,mymodule,refname,refmodule,refport=default_port,mode
         raise(NotImplementedError)
     myrefmod = "%s %s"%(mycall,mymodule)
     c = m17ref_client_blocks(myrefmod,refmodule,host,refport)
-    echolink_to_m17ref = [udp_recv(55501), chunker_b(640), np_convert("<h"), integer_decimate(2), codec2enc, m17frame, tobytes, c.sender()]
+    echolink_to_m17ref = [udp_recv(55501), chunker_b(640), np_convert("<h"), integer_decimate(2), codec2enc, m17voiceframe, tobytes, c.sender()]
     m17ref_to_echolink = [ c.receiver(), m17parse, payload2codec2, codec2dec, integer_interpolate(2), udp_send(("127.0.0.1",55500)) ]
     config = default_config(mode)
     config.m17.dst = "%s %s"%(refname,refmodule)
     config.m17.src = mycall
     print(config)
     c.start()
-    modular(config, [echolink_to_m17ref, m17ref_to_echolink])
+    modules, wait = modular(config, [echolink_to_m17ref, m17ref_to_echolink])
+    wait(modules)
 
 def _m17_to_echolink(port=default_port, echolink_host="localhost",mode=3200, echolink_audio_in_port=55500):
     port=int(port)
@@ -247,7 +269,8 @@ def _m17_to_echolink(port=default_port, echolink_host="localhost",mode=3200, ech
             ]
     config = default_config(mode)
     config.verbose = 0
-    modular(config, [chain])
+    modules, wait = modular(config, [chain])
+    wait(modules)
 
 def _test_chains_example():
     """
@@ -261,7 +284,7 @@ def _test_chains_example():
             # teefile("out.m17"),
             # vox, 
             # ptt,
-            # m17frame, #.04ms of audio per q element at c2.3200
+            # m17voiceframe, #.04ms of audio per q element at c2.3200
             # tobytes, 
             # udp_send, 
             # udp_recv, 
@@ -273,89 +296,10 @@ def _test_chains_example():
             ]
     config = default_config(mode)
     config.verbose = 1
-    modular(config, [test_chain])
-
-def modular(config, chains):
-    """
-    Take in a global configuration, and a list of lists of queue
-    processing functions, and hook them up in a chain, each function in
-    its own process
-    Fantastic for designing, developing, and debugging new features.
-    """
-    #a chain is a series of small functions that share a queue between each pair
-    #each small function is its own process - which is absurd, except this
-    #is a testing and development environment, so ease of implementation/modification
-    #and modularity is the goal
-    #this also means we can meet our latency constraint for writing out
-    #to the speakers without any effort, even though our total latency
-    #from mic->udp is greater than our deadline. 
-    #As long as each function stays under the deadline individually, all we do is add latency from sampled->delivered
-    #   (well, as long as we have enough processor cores, but it's current_year, these functions still arent that heavy, and its working excellently given what I needed it to do
-    #if a function does get slower than realtime, can I make two in its place writing to the same queues?
-    #   as long as i have enough cores still, that seems reasonable - but I'll have to think about it
-    """
-    queues:
-    n -> n2 -> n3 -> n4
-    n has no inq
-    n4 has no outq
-    outq for n is inq for n2, etc
-    for each chain:
-        0 -> 1 -> 2 -> 3
-          0    1     2
-        if there's an old outq, inq=
-        unless at end of chain, create an outq for each fn, outq=
-
-    """
-    modules = {
-            "chains":chains,
-            "queues":[],
-            "processes":[],
-            }
-
-    for chainidx,chain in enumerate(modules["chains"]):
-        inq = None
-        for fnidx,fn in enumerate(chain):
-            name = fn.__name__
-            if fnidx != len(chain):
-                outq = multiprocessing.Queue()
-                modules["queues"].append(outq)
-            else:
-                outq = None
-            process = multiprocessing.Process(name="chain_%d/fn_%d/%s"%(chainidx,fnidx,name), target=fn, args=(config, inq, outq))
-            modules["processes"].append({
-                    "name":name,
-                    "inq":inq,
-                    "outq":outq,
-                    "process":process
-                    })
-            process.start()
-            inq = outq
-    try:
-        procs = modules['processes']
-        while 1:
-            if any(not p['process'].is_alive() for p in procs):
-                print("lost a client process ")
-                for p in procs:
-                    print(p['name'], p['process'].name, p['process'].is_alive())
-                break
-            time.sleep(.05)
-        #I can see where this is going to need to change
-        #it's fine for now, but a real server will need something different
-    except KeyboardInterrupt as e:
-        print("Got ^C, ")
-    finally:
-        print("closing down")
-        for proc in procs:
-            #messy
-            #TODO make a rwlock for indicating shutdown
-            proc["process"].terminate()
+    modules, wait = modular(config, [test_chain])
+    wait(modules)
 
 
 if __name__ == "__main__":
     vars()[sys.argv[1]](*sys.argv[2:])
 
-"""
-Good links I found:
-https://www.cloudcity.io/blog/2019/02/27/things-i-wish-they-told-me-about-multiprocessing-in-python/
-
-"""

@@ -1,10 +1,13 @@
 import sys
+import cmd
 import time
 import wave
 import queue
 import socket
 import random
 import logging
+import readline
+import threading
 import multiprocessing
 
 from .address import Address
@@ -17,6 +20,26 @@ from .blocks import *
 import m17.network as network
 
 import numpy
+
+def default_config(c2_mode):
+    c2,conrate,bitframe = codec2setup(c2_mode)
+    print("conrate, bitframe = [%d,%d]"%(conrate,bitframe) )
+
+    config = dattr({
+        "m17":{
+            "dst":"",
+            "src":"",
+            },
+        "vox":{
+            "silence_threshold":10, #that's measured in queue packets
+            },
+        "codec2":{
+            "c2":c2,
+            "conrate":conrate,
+            "bitframe":bitframe,
+            },
+        })
+    return config
 
 def codeblock(callback):
     def fn(config, inq, outq):
@@ -86,7 +109,8 @@ class TwoWayBlock:
         e.g. if it's being used only to generate packets, the direction is "out"
         if it's being used to terminate a processing stream, the direction is "in"
         """
-        # self.qs[name] = multiprocessing.Queue()
+        if name not in self.qs:
+            self.qs[name] = multiprocessing.Queue()
         def probe_fn(config,inq,outq):
             while 1:
                 if direction == "in":
@@ -101,8 +125,9 @@ class TwoWayBlock:
         return self.probe("send", "in")
 
 def reflector(mycall, bind=("0.0.0.0",17000)):
+    #using the reflector like so:
     # network.simple_n7tae_reflector(mycall, bind=bind) 
-    #exits immediately, so make sure to tell it to not daemonize the thread so it stays running
+    #exits immediately, so make sure to tell it to not daemonize the thread so it stays running:
     network.simple_n7tae_reflector(mycall, bind=bind, nodaemon=True)
 
 def tee_s3uploader(bucket,filebasename):
@@ -140,6 +165,145 @@ def tee_s3uploader_m17streams(bucket,filenamebase):
             log.debug("uploaded to %s"%(filename))
             outq.put(stream1)
     return s3uploader_fn
+
+class bot(TwoWayBlock):
+    def __init__(self):
+        self.qs = {
+                #modular() sender() gets send_in, so we take input from send_out
+                "send":multiprocessing.Queue(),
+                #modular() receiver() reads from recv_out, so we put our own input into recv_in
+                "recv":multiprocessing.Queue(),
+                }
+        self.msgin = self.qs['send']
+        self.msgout = self.qs['recv']
+        self.log = logging.getLogger('bot')
+        self.proc = threading.Thread(name="bot", 
+                target=self.mailman, 
+                args=( 
+                    self.qs,
+                    ))
+        self.proc.daemon = True
+        self.proc.start()
+
+    def mailman(self, qs):
+        #only needed to translate an item on the queue into a method call
+        msgin = qs['send']
+        while 1:
+            msg = msgin.get()
+            self.handleIncoming(None, msg)
+
+    def handleIncoming(self, metadata, msg):
+        self.log.debug("Incoming: %s, %s", metadata, msg)
+        pass
+    def queueOutgoing(self, metadata, msg):
+        self.log.debug("Outgoing: %s, %s", metadata, msg)
+        self.msgout.put(msg)
+        pass
+
+class textshell(cmd.Cmd,bot):
+    #needs a way to print incoming messages in realtime
+    #so probably needs some threading
+    #hey, want to have IRC over M17? 
+    #(And Discord and Matrix?)
+    #https://github.com/jesopo/ircrobots/
+    #https://pypi.org/project/pydle/
+    #https://github.com/itslukej/zirc
+    def __init__(self, mycallsign):
+        #i explicity want the inits of both bot and cmd.Cmd
+        #so no super() here. giving this a shot because bot is so simple.
+        cmd.Cmd.__init__(self)
+        bot.__init__(self)
+        self.callsign = mycallsign
+        self.prompt = ""
+        print("Ready")
+
+    def do_dictate(self, line):
+        print("speak. be heard.")
+        print("Now recording, press enter to transcribe")
+        input("(enter to stop)")
+
+    def do_voice(self, line):
+        parts = line.split()
+        if len(parts):
+            voice = parts[0]
+        else:
+            voice = "Matthew"
+        print(f"now using M17 text and M17 voice {voice} ")
+
+    def do_lang(self, line):
+        default_lang = "en-US"
+        print(f"lang {line} set")
+
+    def do_text(self,line):
+        print(f"now sending only M17 text")
+
+    def do_disconnect(self, line):
+        # print(f"disconnected from {reflectorname} module {module}")
+        print(f"disconnected ")
+
+    def do_connect(self, line):
+        parts = line.split()
+        if len(parts) < 2:
+            print("?")
+            return
+        reflectorname,module = parts[0],parts[1]
+        print(f"connecting to {reflectorname} module {module}")
+
+    def do_EOF(self,line):
+        return True
+    def do_exit(self,line):
+        return True
+    def do_quit(self,line):
+        return True
+    def parseline(self, line):
+        """Parse the line into a command name and a string containing
+        the arguments.  Returns a tuple containing (command, args, line).
+        'command' and 'args' may be None if the line couldn't be parsed.
+
+        modified from stock: only recognizes commands prefixed with '/'
+        this is so default() can be used to send messages.
+        This allows for a prompt a little like irc
+        """
+        line = line.strip()
+        if not line:
+            return None, None, line
+        elif line[0] == '?':
+            line = 'help ' + line[1:]
+        elif line[0] == '!':
+            if hasattr(self, 'do_shell'):
+                line = 'shell ' + line[1:]
+            else:
+                return None, None, line
+        i, n = 0, len(line)
+        #modified only here and below to add the '/' support
+        while i < n and line[i] in self.identchars+'/':  #have to tell cmd.Cmd that '/' is an acceptable character for being part of a command name
+            i=i+1
+        cmd, arg = line[:i], line[i:].strip()
+
+        if cmd and cmd[0] == '/':
+            #strip the slash for command processing
+            return cmd[1:], arg, line
+        elif cmd in ['EOF']: #gah, special case because "EOF"'s a special string from cmd.Cmd
+            return cmd, arg, line
+        else:
+            #if no slash, it's not a command, so onecmd() falls through to default() in cmd.Cmd().onecmd()
+            return None, None, line
+
+    def default(self, line):
+        """Called on an input line when the command prefix is not recognized.
+        Now sends messages to the connected channel
+        """
+        if line[0] == "/":
+            print("unhandled command")
+            return
+        self.queueOutgoing(None, line)
+
+    def handleIncoming(self, metadata, msg):
+        #super().handleIncoming(metadata,msg)
+        print("> ",msg)
+    def emptyline(self,line=None):
+        pass
+
 
 class client_blocks(TwoWayBlock):
     def __init__(self, mycall, reflector_id, theirmodule, bind=None, peer=None ):
@@ -431,7 +595,7 @@ def tossml(config,inq,outq):
         outq.put("<speak>" + inq.get() + "</speak>")
 
 
-def m17frame(config,inq,outq,testmode=False):
+def m17voiceframe(config,inq,outq,testmode=False):
     """
     frame incoming codec2 compressed audio frames into M17 packets
     """
@@ -731,3 +895,88 @@ def check_ptt():
         return True
     else:
         return False
+
+
+def modular(config, chains):
+    """
+    Take in a global configuration, and a list of lists of queue
+    processing functions, and hook them up in a chain, each function in
+    its own process
+    Fantastic for designing, developing, and debugging new features.
+    """
+    #a chain is a series of small functions that share a queue between each pair
+    #each small function is its own process - which is absurd, except this
+    #is a testing and development environment, so ease of implementation/modification
+    #and modularity is the goal
+    #this also means we can meet our latency constraint for writing out
+    #to the speakers without any effort, even though our total latency
+    #from mic->udp is greater than our deadline. 
+    #As long as each function stays under the deadline individually, all we do is add latency from sampled->delivered
+    #   (well, as long as we have enough processor cores, but it's current_year, these functions still arent that heavy, and its working excellently given what I needed it to do
+    #if a function does get slower than realtime, can I make two in its place writing to the same queues?
+    #   as long as i have enough cores still, that seems reasonable - but I'll have to think about it
+    """
+    queues:
+    n -> n2 -> n3 -> n4
+    n has no inq
+    n4 has no outq
+    outq for n is inq for n2, etc
+    for each chain:
+        0 -> 1 -> 2 -> 3
+          0    1     2
+        if there's an old outq, inq=
+        unless at end of chain, create an outq for each fn, outq=
+
+    """
+    modules = {
+            "chains":chains,
+            "queues":[],
+            "processes":[],
+            }
+
+    for chainidx,chain in enumerate(modules["chains"]):
+        inq = None
+        for fnidx,fn in enumerate(chain):
+            name = fn.__name__
+            if fnidx != len(chain):
+                outq = multiprocessing.Queue()
+                modules["queues"].append(outq)
+            else:
+                outq = None
+            process = multiprocessing.Process(name="chain_%d/fn_%d/%s"%(chainidx,fnidx,name), target=fn, args=(config, inq, outq))
+            modules["processes"].append({
+                    "name":name,
+                    "inq":inq,
+                    "outq":outq,
+                    "process":process
+                    })
+            process.start()
+            inq = outq
+
+    def wait(modules):
+        try:
+            procs = modules['processes']
+            while 1:
+                if any(not p['process'].is_alive() for p in procs):
+                    print("lost a client process ")
+                    for p in procs:
+                        print(p['name'], p['process'].name, p['process'].is_alive())
+                    break
+                time.sleep(.05)
+            #I can see where this is going to need to change
+            #it's fine for now, but a real server will need something different
+        except KeyboardInterrupt as e:
+            print("Got ^C, ")
+        finally:
+            print("closing down")
+            for proc in procs:
+                #messy
+                #TODO make a rwlock for indicating shutdown
+                proc["process"].terminate()
+    # wait()
+    return modules, wait
+    """
+    Good links I found:
+    https://www.cloudcity.io/blog/2019/02/27/things-i-wish-they-told-me-about-multiprocessing-in-python/
+
+    """

@@ -43,21 +43,11 @@ class n7tae_protocol:
     * a mode string, either "server" or "client"
 
     """
-    def __init__(self, mycallsign, mode, bind=None, peer=None):
-        self.mode = mode
-        if mode == "server":
-            self.log = logging.getLogger("m17refl\t")
-            #bind directly to specified port and wait for connections to this reflector
-            self.listenconn = peer if peer else ("0.0.0.0",17000)
-            self.peer = None
-        else:# mode == "client"
-            self.log = logging.getLogger("m17client(%s)\t"%(str(peer)))
-            self.listenconn = bind if bind else ("0.0.0.0", 17000)
-            self.peer = peer
+    def __init__(self, mycallsign, bind=None):
+        self.log = logging.getLogger("n7tae")
+        self.bind = bind if bind else ("0.0.0.0",17000)
+        self.peer = None
 
-            #bind to a port of my choosing and connect out to remote reflector
-        self.nack_count = 0
-        self.subs = {}
 
         #self.connections, a dict where 
         #   key is a udp socket (host,port) pair 
@@ -71,68 +61,78 @@ class n7tae_protocol:
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind(self.listenconn)
+        self.sock.bind(self.bind)
         self.sock.setblocking(False)
 
-        self.times = dattr({
-                "recv_ping": None,
-                "send_ping": None,
-                "recv_pong": None,
-                "send_pong": None,
-                "recv": None,
-                "send": None,
-                })
-
-    def add_subscription(self, theirmodule ):
-        self.subs[theirmodule] = True
-    def rm_subscription(self, theirmodule ):
-        self.subs[theirmodule] = False
-    def add_connection(self, call, my_channel, conn):
-        if conn in self.connections:
+    def add_connection(self, call, module, peer):
+        if peer in self.connections:
             return False #already registered, NACK 'em
-        new_connection = dattr({
-                "call": call,
-                "conn": conn,
-                "chan": my_channel,
-                })
-        self.connections[conn] = new_connection
+        else:
+            new_connection = dattr({
+                    "call": call,
+                    "module": module,
+                    "peer": peer,
+                    "nack_count": 0,
+                    "ping_count": 0,
+                    "pong_count": 0,
+                    "times": dattr({
+                        "recv_ping": None,
+                        "send_ping": None,
+                        "recv_pong": None,
+                        "send_pong": None,
+                        "recv": None,
+                        "send": None,
+                        })
+                    })
+        self.connections[peer] = new_connection
         return True
 
-    def del_connection(self, conn):
+    def del_connection(self, peer):
         try:
-            if conn in self.connections:
-                del self.connections[conn]
+            if peer in self.connections:
+                del self.connections[peer]
         except KeyError as e:
             pass
 
-    def check_and_prune_connections(self):
-        for call in self.connections:
-            self.connections[call].prot.check_and_prune_if_dead()
+    # def check_and_prune_connections(self):
+        # for call in self.connections:
+            # self.connections[call].prot.check_and_prune_if_dead()
 
-    @property
-    def lastheard(self):
-        times = [
-                self.times.recv_ping,
-                self.times.recv_pong,
-                self.times.recv,
-                ]
-        deltatimes = [time.time() - t for t in times if t is not None]
-        print(times,deltatimes)
-        if len(deltatimes) > 0:
-            return min(deltatimes)
-        else:
-            return None
+    # @property
+    # def lastheard(self):
+        # times = [
+                # self.times.recv_ping,
+                # self.times.recv_pong,
+                # self.times.recv,
+                # ]
+        # deltatimes = [time.time() - t for t in times if t is not None]
+        # print(times,deltatimes)
+        # if len(deltatimes) > 0:
+            # return min(deltatimes)
+        # else:
+            # return None
 
 
     def close(self):
         self.sock.close()
 
-    def connect(self, theirmodule="A"):
-        data = b"CONN" + self.mycall_b + theirmodule.encode("ascii")
-        self.add_subscription(theirmodule)
-        self.send(data)
+    def connect(self, call=None, module="A", peer=None):
+        if not peer and not reflector:
+            raise(Exception("What exactly are you connecting to? Provide either a host,port tuple or a reflector name"))
+        elif not peer and reflector:
+            host = m17ref_name2host(reflector)
+            port = 17000
+            peer = (host,port)
+        #else we got both or just peer, and peer takes precedence over call anyway
+        
+        self.add_connection(call,module,peer)
+        #you might think we should only add the connection if it succeeds - but it's pretty often
+        # we need to retry after a NACK+DISC conversation. Saving the connection allows us to track it and keep retrying.
+        # we'll need a way to catch failing and flapping connections anyway, so need to expand the API in that direction
+        data = b"CONN" + self.mycall_b + module.encode("ascii")
+        self.send(data, peer)
 
-    def disco(self):
+    def disco(self, peer):
         """
         The official protocol assumes there's only one client per peer 
         (ipv6 is a clear winner to avoid NAT then, eh?)
@@ -142,7 +142,7 @@ class n7tae_protocol:
 
         self.log.info("DISC")
         data = b"DISC" + self.mycall_b 
-        self.send(data)
+        self.send(data, peer)
 
     def connect_in(self, pkt, peer):
         """
@@ -171,12 +171,12 @@ class n7tae_protocol:
 
     def pong(self, peer=None):
         data = b"PONG" + self.mycall_b 
-        self.times.send_pong = time.time()
+        self.connections[peer].times.send_pong = time.time()
         self.send(data, peer)
 
     def ping(self, peer=None):
         data = b"PING" + self.mycall_b 
-        self.times.send_ping = time.time()
+        self.connections[peer].times.send_ping = time.time()
         self.send(data, peer)
 
     def ack(self, peer=None):
@@ -194,67 +194,80 @@ class n7tae_protocol:
         pass
 
     def send_to_all_except(self,  pkt, except_this_peer):
-        for peer in self.connections:
-            if peer == except_this_peer:
-                continue
-            self.send(pkt, peer)
+        peers = [peer for peer in self.connections if peer != except_this_peer]
+        self.send(pkt, peers=peers)
 
-    def send(self,  pkt, peer=None):
-        if peer is None and self.peer is not None:
-            peer = self.peer
-        # self.log.debug("SEND %s: %s"%(peer, pkt))
-        self.times.send = time.time()
-        self.sock.sendto(pkt, peer)
+    def send(self,  pkt, peer=None, peers=None):
+        if peer is None and peers is None:
+            peers = [peer for peer in self.connections]
+            if len(peers) > 1:
+                self.log.warning("Implicitly sending to multiple peers, this is unexpected at the moment")
+
+        for p in peers or [peer]:
+            # self.log.debug("SEND %s: %s"%(peer, pkt))
+            if p in self.connections:
+                self.connections[p].times.send = time.time()
+            self.sock.sendto(pkt, p)
 
     def recv(self):
         try:
-            bs, clientconn = self.sock.recvfrom( 1500 ) 
-            self.times.recv = time.time()
+            bs, peer = self.sock.recvfrom( 1500 ) 
+            if peer in self.connections:
+                self.connections[peer].times.recv = time.time()
+            else:
+                if bs[:4] != b"CONN":
+                    #drop it on the floor? or nack it?
+                    # self.nack(peer)
+                    self.log.warning("packet from unregistered peer %s:%d %s..."%(peer[0],peer[1], binascii.hexlify(bs[:16])))
+                    return None
         except BlockingIOError as e:
             return None
-        return self.handle(bs, clientconn)
+        return self.handle(bs, peer)
 
 
-    def handle(self, pkt, from_conn):
-        # self.log.debug("RECV %s: %s"%(from_conn, pkt))
+    def handle(self, pkt, peer):
+        #recv should ensure peer is in our active connections list before calling us
+        # self.log.debug("RECV %s: %s"%(peer, pkt))
         if pkt.startswith(b"PING"):
-            self.times.recv_ping = time.time()
-            self.pong(from_conn)
+            self.connections[peer].times.recv_ping = time.time()
+            self.connections[peer].ping_count += 1
+            self.pong(peer)
         elif pkt.startswith(b"PONG"):
-            self.times.recv_pong = time.time()
-            # self.pong()
+            self.connections[peer].times.recv_pong = time.time()
+            self.connections[peer].pong_count += 1
         elif pkt.startswith(b"ACKN"):
             #successful connection, but as a client
-            self.nack_count = 0
+            self.connections[peer].nack_count = 0
         elif pkt.startswith(b"NACK"):
             #unsuccessful connection, as a client
-            self.nack_count += 1
-            if self.nack_count < 5:
-                self.disco()
-                for module, status in self.subs.items():
-                    if status:
-                        self.connect(module)
+            self.connections[peer].nack_count += 0
+            if self.connections[peer].nack_count < 5:
+                #if we got a nack, we are probably just already registered from a previous session that hasn't timed out
+                #so disconnect that session and try again
+                self.disco(peer)
             else:
+                #if after five tries, finally give up
+                #this will currently bring everything to a screeching halt :)
                 raise(Exception("Refused (NACK) by reflector"))
         elif pkt.startswith(b"CONN"):
-            if self.connect_in( pkt[4:], from_conn):
-                self.ack(from_conn)
+            if self.connect_in( pkt[4:], peer):
+                self.ack(peer)
             else:
-                self.nack(from_conn) 
+                self.nack(peer) 
                 #really i don't think we should NACK them for already being connected. That's rude.
                 #but leaving it as-is for now
         elif pkt.startswith(b"DISC"):
-            return self.handle_disc( pkt[4:], from_conn)
+            return self.handle_disc( pkt[4:], peer)
         elif pkt.startswith(b"M17 "):
             # self.log.warning("M17 packet magic: %s"%(pkt[:4]))
-            return pkt, from_conn
+            return pkt, peer
         else:
             self.log.warning("unhandled packet magic: %s"%(pkt[:4]))
-            return pkt, from_conn
+            return pkt, peer
 
 
 class simple_n7tae_client():
-    def __init__(self, mycall, bind, peer, *args, **kwargs):
+    def __init__(self, mycall, bind, *args, **kwargs):
         self.mycall = mycall
         #client
         self.sendq = queue.Queue()
@@ -263,19 +276,20 @@ class simple_n7tae_client():
         #recvq is packets received from the socket
 
 
-        self.prot = n7tae_protocol(mycall, mode="client", bind=bind, peer=peer)
+        self.prot = n7tae_protocol(mycall, bind=bind)
         self.proc = threading.Thread(name="mrefd_client", 
                 target=self.client, 
                 args=( 
                     self.prot,
-                    self.sendq,self.recvq, 
+                    self.sendq,
+                    self.recvq, 
                     self.mycall, 
                     ))
         self.proc.daemon = True
         self.start()
 
-    def connect(self, theirmodule):
-        return self.prot.connect(theirmodule)
+    def connect(self, *args, **kwargs):
+        return self.prot.connect(*args,**kwargs)
     def start(self):
         self.proc.start()
     def join(self):
@@ -305,13 +319,12 @@ class simple_n7tae_client():
             time.sleep(.00001)
 
 class simple_n7tae_reflector():
-    def __init__(self, mycall, bind=None, peer=None, *args, **kwargs):
+    def __init__(self, mycall, bind=None, *args, **kwargs):
         #server
         self.mycall = mycall
         self.bind = bind
-        self.peer = peer
 
-        self.prot = n7tae_protocol(mycall, mode="server", bind=bind, peer=peer)
+        self.prot = n7tae_protocol(mycall, bind=bind)
         self.proc = threading.Thread(name="mrefd-like_reflector", 
                 target=self.server, 
                 args=( 
@@ -342,23 +355,32 @@ class simple_n7tae_reflector():
 class ReflectorProtocolTests(unittest.TestCase):
     def testPingPong(self):
         logging.info("pingpong test")
-        a = n7tae_protocol("1",mode="server",bind=("0.0.0.0",17000))
-        b = n7tae_protocol("2",mode="client",bind=("0.0.0.0",17001),peer=("127.0.0.1",17000))
-        b.ping() #send ping
+        ap = ("127.0.0.1",17000)
+        bp = ("127.0.0.1",17001)
+        a = n7tae_protocol("1",bind=ap)
+        b = n7tae_protocol("2",bind=bp)
+        b.connect(peer=ap)
+        a.recv() 
+        b.recv()
+        b.ping(ap) #send ping
         a.recv() #a gets ping, pongs
         b.recv() #b gets pong
-        self.assertTrue(a.lastheard > 0)
-        self.assertTrue(b.lastheard > 0)
+
+        #TODO: lastheard needs to be updated to handle multiple peers
+        # self.assertTrue(a.lastheard > 0)
+        # self.assertTrue(b.lastheard > 0)
         a.close()
         b.close()
 
 
     def testConnect(self):
         logging.info("conn test")
-        a = n7tae_protocol("1", mode="server", bind=("0.0.0.0",17000))
-        b = n7tae_protocol("2", mode="client", peer=("127.0.0.1",17000),bind=("0.0.0.0",17001))
+        ap = ("127.0.0.1",17000)
+        bp = ("127.0.0.1",17001)
+        a = n7tae_protocol("1",bind=ap)
+        b = n7tae_protocol("2",bind=bp)
         # b.connect("1", ("127.0.0.1", 17000), "Z")
-        b.connect("Z")
+        b.connect(peer=ap)
         a.recv() 
         b.recv()
         # self.assertTrue(b.is_connected("1","Z"))
@@ -368,32 +390,38 @@ class ReflectorProtocolTests(unittest.TestCase):
 
     def testDisco(self):
         logging.info("disco test")
-        a = n7tae_protocol("1", mode="server", bind=("0.0.0.0",17000))
-        b = n7tae_protocol("2", mode="client", peer=("127.0.0.1",17000),bind=("0.0.0.0",17001))
-        # b.connect("1", ("127.0.0.1", 17000), "Z")
-        b.connect("Z")
+        ap = ("127.0.0.1",17000)
+        bp = ("127.0.0.1",17001)
+        a = n7tae_protocol("1",bind=ap)
+        b = n7tae_protocol("2",bind=bp)
+        b.connect(peer=ap)
         a.recv() 
         b.recv()
         a.recv() 
-        self.assertTrue(a.lastheard > 0)
-        self.assertTrue(b.lastheard > 0)
-        b.disco()
+        # self.assertTrue(a.lastheard > 0)
+        # self.assertTrue(b.lastheard > 0)
+        b.disco(ap)
         a.recv() 
         b.recv()
-        self.assertTrue(a.lastheard > 0)
-        self.assertTrue(b.lastheard > 0)
+        # self.assertTrue(a.lastheard > 0)
+        # self.assertTrue(b.lastheard > 0)
         a.close()
         b.close()
 
     def testZZClientServer(self):
         logging.info("ClientServer test")
-        ref = simple_n7tae_reflector("REFLECTOR", bind=("0.0.0.0", 17000))
-        cli1 = simple_n7tae_client("CLIENT1", bind=("0.0.0.0",17010), peer=("127.0.0.1", 17000))
-        cli2 = simple_n7tae_client("CLIENT2", bind=("0.0.0.0",17011), peer=("127.0.0.1", 17000))
-        cli1.connect('Z')
-        cli2.connect('Z')
+        ap = ("127.0.0.1",17000)
+        bp = ("127.0.0.1",17010)
+        cp = ("127.0.0.1",17011)
+        ref = simple_n7tae_reflector("REFLECTOR", bind=ap)
+        cli1 = simple_n7tae_client("CLIENT1", bind=bp)
+        cli2 = simple_n7tae_client("CLIENT2", bind=cp)
+        cli1.connect(peer=ap)
+        cli2.connect(peer=ap)
+        time.sleep(.05) #yield to the reflector
         i = 0
         cli1.send(b"M17 ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        time.sleep(.01) #yield to the reflector
         while i < 10:
             cli1.send(b"M17 ABCDEF %d"%(i))
             time.sleep(.01)
@@ -412,16 +440,15 @@ class ReflectorProtocolTests(unittest.TestCase):
     def XZClientServer(self):
         # disabled by removing "test" from name until such time as modules are added to the python reflector implentation above
         logging.info("ClientServer - different modules test")
-        ref = simple_n7tae_reflector("REFLECTOR", bind=("0.0.0.0", 17000))
-        cli1 = simple_n7tae_client("CLIENT1", bind=("0.0.0.0",17010), peer=("127.0.0.1", 17000))
-        cli2 = simple_n7tae_client("CLIENT2", bind=("0.0.0.0",17011), peer=("127.0.0.1", 17000))
-        cli1.connect('Z')
-        cli2.connect('X')
-        i = 0
+        ap = ("127.0.0.1",17000)
+        bp = ("127.0.0.1",17010)
+        cp = ("127.0.0.1",17011)
+        ref = simple_n7tae_reflector("REFLECTOR", bind=ap)
+        cli1 = simple_n7tae_client("CLIENT1", bind=bp)
+        cli2 = simple_n7tae_client("CLIENT2", bind=cp)
+        cli1.connect(module="Z",peer=ap)
+        cli2.connect(module="X",peer=ap)
         cli1.send(b"M17 ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-        while i < 10:
-            cli1.send(b"M17 ABCDEF %d"%(i))
-            time.sleep(.01)
-            x = cli2.recv()
-            assert x == None
-            i+=1
+        time.sleep(.01)
+        x = cli2.recv()
+        # assert x == None
