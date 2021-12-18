@@ -24,7 +24,7 @@ def M17SMS(mycall, refname, theirmodule):
     config.m17.src = Address(callsign=mycall)
     config.m17.src.set_reflector_module("S")
 
-    n7tae = client_blocks(mycall, bind=("0.0.0.0",17013))
+    n7tae = client_blocks(mycall)
     n7tae.start()
     #hmmm. client_blocks and the protocol class itself need a rewrite to handle this, eh?
     #TODO: for now, be careful that n7tae connect() only connects to dst set in config 
