@@ -195,10 +195,10 @@ class bot(TwoWayBlock):
             self.handleIncoming(None, msg)
 
     def handleIncoming(self, metadata, msg):
-        self.log.debug("Incoming: %s, %s", metadata, msg)
+        self.log.debug("(Unimplemented bot.handleIncoming()): Incoming: %s, %s", metadata, msg)
         pass
     def queueOutgoing(self, metadata, msg):
-        self.log.debug("Outgoing: %s, %s", metadata, msg)
+        # self.log.debug("Outgoing: %s, %s", metadata, msg)
         self.msgout.put(msg)
         pass
 
