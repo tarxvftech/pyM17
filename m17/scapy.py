@@ -274,6 +274,11 @@ class M17PacketModeFrame(sp.Packet):
             ]
 class M17SMS(s.Raw):
     name = "M17SMS"
+    fields_desc = [
+            s.StrField("msgbody", "Hello World!")
+            ]
+    def mysummary(self):
+        return self.underlayer.underlayer.sprintf("%M17IP.src% > %M17IP.dst%: %msgbody%")
 
 #bind_layers can only bind using keys from the low layer (e.g. UDP fields when binding UDP and DVRef)
 s.bind_layers(M17IP, C2_3200, frametype=1, datamode=2)
@@ -348,9 +353,16 @@ if __name__ == "__main__":
         # print(P.summary())
     # import pdb; pdb.set_trace()
 
+    # x=s.IP()/s.UDP()/DVRef()/M17IP()/M17PacketModeFrame()/M17SMS()
+    # print(x)
+    # print(x.summary())
+    # print(x.show())
+    # import pdb; pdb.set_trace()
 
-    # while 1:
-        # a=s.sniff(filter="udp and port 17000",timeout=2)
-    a = s.rdpcap("scapy_test.pcapng")
-    a.summary()
+
+    while 1:
+        a=s.sniff(filter="udp and port 17000",timeout=2)
+        a.summary()
+    # a = s.rdpcap("scapy_test.pcapng")
+    # a.summary()
 

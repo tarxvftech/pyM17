@@ -57,8 +57,11 @@ class initialLICH:
         self.src = src
         self.dst = dst
         self.streamtype = streamtype
-        self.nonce = nonce 
-        assert len(nonce) == 14
+        if nonce:
+            self.nonce = nonce 
+        else:
+            self.nonce = b"\x00"*14
+        assert len(self.nonce) == 14
 
     def __eq__(self, other):
         return bytes(self) == bytes(other)
@@ -227,7 +230,8 @@ class ipFrame(regularFrame):
         b += bitstruct.pack("u16", self.frame_number)
         b += bytes(self.payload)
         b += crc(b).to_bytes(2,"big")
-        assert self.sz == len(b)
+        if self.LICH.streamtype == 5:
+            assert self.sz == len(b)
         return b
 
     @staticmethod
@@ -241,10 +245,13 @@ class ipFrame(regularFrame):
         d["streamid"]= bitstruct.unpack("u16", data[4:6])[0]
         lich_start = 6
         lich_end = lich_start+initialLICH.sz
-        payload_start = lich_end+2
-        payload_end = payload_start+16
         d["LICH"] = initialLICH.from_bytes(data[lich_start:lich_end])
         d["frame_number"]= bitstruct.unpack("u16", data[lich_end:payload_start])[0]
+        payload_start = lich_end+2
+        if d["LICH"].streamtype == 5:
+            payload_end = payload_start+16
+        else:
+            payload_end = len(data)-2
         d["payload"] = data[payload_start:payload_end]
         embedded_crc = data[payload_end:payload_end+2]
         if crc(data) != 0:
@@ -284,3 +291,4 @@ class M17_Frametype(int):
             (7, "reserved"),
             ]
 standard_voice_stream = 5
+standard_data_packet = 2

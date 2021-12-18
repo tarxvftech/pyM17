@@ -142,10 +142,10 @@ def parse_utf_style_int(fourbytes):
     else:
         return (4, ((b[0] & 0x7)<<18) | ((b[1] & 0x3f)<<12) | ((b[2] & 0x3f)<<6) | (b[3] & 0x3f))
 
-def encode_utf_style_int(length_in_bytes):
+def encode_utf_style_int(value_to_encode): 
     #stolen from utf8proc, which is under MIT
     #https://github.com/JuliaStrings/utf8proc/blob/master/LICENSE.md
-    n = length_in_bytes
+    n = value_to_encode
     if n < 0:
         return bytes([0])
     elif n < 0x80:

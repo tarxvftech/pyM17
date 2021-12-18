@@ -16,19 +16,25 @@ from m17.address import Address
 
 #reflector app (mycall)
 
-def M17SMS(callsign):
-    shell = textshell(callsign)
+def M17SMS(mycall, refname, theirmodule):
+    shell = textshell(mycall)
     config = default_config(3200)
-    config.m17.dst = refname
+    config.m17.dst = Address(callsign=refname)
     config.m17.dst.set_reflector_module(theirmodule)
-    config.m17.src = mycall
+    config.m17.src = Address(callsign=mycall)
     config.m17.src.set_reflector_module("S")
 
-    n7tae = client_blocks(config.m17.src, refname, theirmodule, peer=(host,port), bind=("0.0.0.0",17013))
+    n7tae = client_blocks(mycall, bind=("0.0.0.0",17013))
+    n7tae.start()
     #hmmm. client_blocks and the protocol class itself need a rewrite to handle this, eh?
+    #TODO: for now, be careful that n7tae connect() only connects to dst set in config 
+    #this is easy at this specific moment because textshell isn't hooked up to the protocol either lol
+
+    n7tae.connect(refname,theirmodule)
+    # rxchain = [ shell.receiver(), m17packetframe, tobytes, n7tae.sender() ]
     rxchain = [ shell.receiver(), m17packetframe, tobytes, n7tae.sender() ]
     txchain = [ n7tae.receiver(), m17parse, shell.sender() ]
-    modules, wait = modular(config, [chain])
+    modules, wait = modular(config, [rxchain,txchain])
     shell.cmdloop()
     for proc in modules['processes']:
         proc["process"].terminate()
@@ -56,7 +62,7 @@ def parrot(mycall, refname, theirmodule):
     me.set_reflector_module(mymodule)
     them = Address(callsign=refname)
     them.set_reflector_module(theirmodule)
-    c = client_blocks(me,refname, theirmodule,peer=(host,port))
+    c = client_blocks(mycall)
     chain = [c.receiver(), m17parse, m17voiceframes2streams, tee('stream'), teestreamfile('parrot'), m17streams2frames, 
             m17rewriter(src=me,dst=them, streamid=random.randint(1,2**16-1)),
             throttle(27), 
@@ -80,7 +86,7 @@ def streams_toS3(mycall, refname,theirmodule):
     me.set_reflector_module(mymodule)
     them = Address(callsign=refname)
     them.set_reflector_module(theirmodule)
-    c = client_blocks(me)
+    c = client_blocks(mycall)
     rx_chain = [c.receiver(), m17parse, m17voiceframes2streams, tee(''), tee_s3uploader_m17streams('m17','transcribeme'), null ]
     config = {}
     c.start()
@@ -102,7 +108,7 @@ def stream_saver(mycall, refname,theirmodule):
     me.set_reflector_module(mymodule)
     them = Address(callsign=refname)
     them.set_reflector_module(theirmodule)
-    c = client_blocks(me)
+    c = client_blocks(mycall)
     rx_chain = [c.receiver(), m17parse, m17voiceframes2streams, tee('stream'), teestreamfile('saved'), null ]
     # rx_chain = [m17parse,... ]
     config = {}
@@ -111,6 +117,7 @@ def stream_saver(mycall, refname,theirmodule):
     wait(modules)
 
 def client(mycall,mymodule,refname,theirmodule,port=default_port,mode=3200):
+    #TODO Update for new APIs
     mode=int(mode) #so we can call modular_client straight from command line
     port=int(port)
 
@@ -118,7 +125,7 @@ def client(mycall,mymodule,refname,theirmodule,port=default_port,mode=3200):
     me.set_reflector_module(mymodule)
     them = Address(callsign=refname)
     them.set_reflector_module(theirmodule)
-    c = client_blocks(me)
+    c = client_blocks(mycall)
 
     tx_chain = [mic_audio, codec2enc, vox, m17voiceframe, tobytes, c.sender()]
     rx_chain = [c.receiver(), m17parse, payload2codec2, codec2dec, spkr_audio]

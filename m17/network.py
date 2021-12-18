@@ -5,10 +5,11 @@ import time
 import json
 import struct
 import random
+import pprint
+import socket
 import logging
 import unittest
 import binascii
-import socket
 
 import queue
 import threading
@@ -23,7 +24,7 @@ import m17.address
 import requests
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
-
+pp = pprint.pprint
 
 
 def m17ref_name2host(refname):
@@ -71,10 +72,11 @@ class n7tae_protocol:
             new_connection = dattr({
                     "call": call,
                     "module": module,
-                    "peer": peer,
+                    "original_peer": peer,
                     "nack_count": 0,
                     "ping_count": 0,
                     "pong_count": 0,
+                    "disc_count": 0,
                     "times": dattr({
                         "recv_ping": None,
                         "send_ping": None,
@@ -84,6 +86,12 @@ class n7tae_protocol:
                         "send": None,
                         })
                     })
+            ip = socket.gethostbyname(peer[0])
+            if ip != peer[0]:
+                peer = (ip,peer[1])
+        #we depend on the key in self.connections to be the ip,port tuple we will get from udp socket listener 
+        #if it's a hostname, it won't match!
+        #TODO: cache hostnames and check
         self.connections[peer] = new_connection
         return True
 
@@ -117,10 +125,10 @@ class n7tae_protocol:
         self.sock.close()
 
     def connect(self, call=None, module="A", peer=None):
-        if not peer and not reflector:
+        if not peer and not call:
             raise(Exception("What exactly are you connecting to? Provide either a host,port tuple or a reflector name"))
-        elif not peer and reflector:
-            host = m17ref_name2host(reflector)
+        elif not peer and call:
+            host = m17ref_name2host(call)
             port = 17000
             peer = (host,port)
         #else we got both or just peer, and peer takes precedence over call anyway
@@ -166,8 +174,14 @@ class n7tae_protocol:
         addr = int.from_bytes(callsign_40, 'big')
         theircall = m17.address.Address(addr=addr)
         self.log.info("%s (%s) sent DISC"%(peer, theircall))
-        self.del_connection(peer)
-        ...
+        self.connections[peer].disc_count += 1
+        if self.connections[peer].disc_count > 5:
+            self.log.warning("%s (%s) sent DISC too many times, deleting connection"%(peer, theircall))
+            self.del_connection(peer)
+        else:
+            self.disco(peer)
+            conn = self.connections[peer]
+            self.connect(conn.call, conn.module, conn.original_peer)
 
     def pong(self, peer=None):
         data = b"PONG" + self.mycall_b 
@@ -218,6 +232,7 @@ class n7tae_protocol:
                 if bs[:4] != b"CONN":
                     #drop it on the floor? or nack it?
                     # self.nack(peer)
+                    pp(self.connections)
                     self.log.warning("packet from unregistered peer %s:%d %s..."%(peer[0],peer[1], binascii.hexlify(bs[:16])))
                     return None
         except BlockingIOError as e:
@@ -237,7 +252,10 @@ class n7tae_protocol:
             self.connections[peer].pong_count += 1
         elif pkt.startswith(b"ACKN"):
             #successful connection, but as a client
+            call = self.connections[peer].call
+            self.log.info("ACKN, connected with %s"%(call))
             self.connections[peer].nack_count = 0
+            self.connections[peer].disc_count = 0
         elif pkt.startswith(b"NACK"):
             #unsuccessful connection, as a client
             self.connections[peer].nack_count += 0

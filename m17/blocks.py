@@ -11,11 +11,11 @@ import threading
 import multiprocessing
 
 from .address import Address
-from .frames import ipFrame
+from .frames import initialLICH, ipFrame, standard_data_packet
 from .framer import M17_IPFramer
 from .streams import M17_IPStream
 from .const import *
-from .misc import example_bytes,_x,chunk,dattr
+from .misc import example_bytes,_x,chunk,dattr,encode_utf_style_int
 from .blocks import *
 import m17.network as network
 
@@ -306,38 +306,50 @@ class textshell(cmd.Cmd,bot):
 
 
 class client_blocks(TwoWayBlock):
-    def __init__(self, mycall, reflector_id, theirmodule, bind=None, peer=None ):
+    #TODO simplify
+    """
+    You can't simply use the network client's own queues, because this is an adapter to the modular() queueing system.
+    (Though there's an opportunity here for making the network client multiprocessing capable, instead of threaded eh?)
+    (there're too many layers, and i can definitely make this simpler while retaining the modularity)
+    """
+    def __init__(self, mycall, bind=None):
         self.mycall = mycall
-        self.reflectorid = reflector_id
-        self.theirmodule = theirmodule
         self.qs = {
                 "send":multiprocessing.Queue(),
                 "recv":multiprocessing.Queue(),
+                "cmds":multiprocessing.Queue(),
                 }
         self.process = multiprocessing.Process(name="m17ref_client_blocks", 
                 target=self.proc, 
                 args=(
                     self.qs,
                     mycall,
-                    theirmodule,
-                    bind, peer
+                    bind
                     )
                 )
 
-    def start(self):
+    def start(self,daemon=True):
+        self.process.daemon = daemon
         self.process.start()
+    def connect(self, call=None, module="A", peer=None):
+        self.qs["cmds"].put( ("connect", call, module, peer ) )
 
-    def proc(self, qs, mycall,theirmodule, bind, peer):
+    def proc(self, qs, mycall,bind):
         """
         """
-        cli = network.simple_n7tae_client(mycall, bind, peer)
-        cli.connect(theirmodule) #need to handle disconnects and resubscribes in the client or protocol
+        cli = network.simple_n7tae_client(mycall, bind)
         #cli.sendq #(packets to send out)
         #cli.recvq #(packets we've just received)
-
+        cmdq = qs["cmds"]
         sendq = qs["send"]
         recvq = qs["recv"]
         while 1:
+            if not cmdq.empty():
+                args = cmdq.get()
+                print("client_blocks:",args)
+                cmd, args = args[0], args[1:]
+                if cmd == "connect":
+                    cli.connect(*args)
             x = cli.recv()
             if x:
                 recvq.put(x)
@@ -595,6 +607,43 @@ def tossml(config,inq,outq):
         outq.put("<speak>" + inq.get() + "</speak>")
 
 
+def m17packetframe(config,inq,outq,testmode=False):
+    """
+    frame outgoing payloads into packets
+    TODO: lots of hardcoded values
+    """
+    if isinstance(config.m17.dst, Address):
+        dst = config.m17.dst
+    else:
+        dst = Address(callsign=config.m17.dst)
+    if isinstance(config.m17.src, Address):
+        src = config.m17.src
+    else:
+        src = Address(callsign=config.m17.src)
+    print(dst)
+    print(src)
+    fn = 0
+    lich=initialLICH(
+            dst=dst,
+            src=src,
+            streamtype=standard_data_packet,
+            )
+    while 1:
+        if inq.empty() and testmode:
+            return
+        text = inq.get()
+        body=text.encode("utf-8")
+        payload = encode_utf_style_int(5) + body
+        frame=ipFrame(
+            streamid=random.randint(1,2**16-1),
+            LICH=lich,
+            frame_number=fn,
+            payload=payload
+            )
+        fn += 1
+        outq.put(frame)
+        #TODO: assuming payloads are under max size for now
+
 def m17voiceframe(config,inq,outq,testmode=False):
     """
     frame incoming codec2 compressed audio frames into M17 packets
@@ -656,7 +705,7 @@ def m17streams2frames(config,inq,outq,testmode=False):
         for frame in stream:
             outq.put(frame)
 
-def m17frames2streams(config,inq,outq,testmode=False):
+def m17voiceframes2streams(config,inq,outq,testmode=False):
     """
     Batches up groups of parsed M17 frames (IP only for now) into streams.
 
