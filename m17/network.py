@@ -210,7 +210,8 @@ class n7tae_protocol:
 
     def send_to_all_except(self,  pkt, except_this_peer):
         peers = [peer for peer in self.connections if peer != except_this_peer]
-        self.send(pkt, peers=peers)
+        if peers:
+            self.send(pkt, peers=peers)
 
     def send(self,  pkt, peer=None, peers=None):
         if peer is None and peers is None:
@@ -222,7 +223,8 @@ class n7tae_protocol:
             # self.log.debug("SEND %s: %s"%(peer, pkt))
             if p in self.connections:
                 self.connections[p].times.send = time.time()
-            self.sock.sendto(pkt, p)
+            if p != None:
+                self.sock.sendto(pkt, p)
 
     def recv(self):
         try:
