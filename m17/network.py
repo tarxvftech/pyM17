@@ -38,16 +38,24 @@ def m17ref_name2host(refname):
 class reflector_checker:
     def __init__(self,reflist):
         self.reflist = reflist
-    def check(self, reflector):
-        pass
+        self.prot = n7tae_protocol("U4TIME")
+        self.proc = threading.Thread(name="refchecker", 
+                target=self.loop, 
+                args=( 
+                    self.prot,
+                    self.mycall, 
+                    ))
+        self.proc.daemon = True
+        self.start()
     def start_allcheck(self):
         for ref in self.reflist:
             self.check(ref)
-    def results(self):
-        pass
-    @property
-    def results_ready(self):
-        return False
+            self.prot.connect(call,"Z", peer)
+    # def results(self):
+        # pass
+    # @property
+    # def results_ready(self):
+        # return False
 
 class n7tae_protocol:
     """
@@ -216,6 +224,16 @@ class n7tae_protocol:
         data = b"ACKN"
         self.send(data, peer)
 
+    def info(self, peer=None):
+        data = b"INFO"
+        self.send(data, peer)
+    def up_p(self, peer=None):
+        data = b"UP? "
+        self.send(data, peer)
+    def alive(self, peer=None):
+        data = b"ALIV"
+        self.send(data, peer)
+
     def nack(self, peer=None):
         data = b"NACK"
         self.send(data, peer)
@@ -269,6 +287,16 @@ class n7tae_protocol:
                 self.connections[peer].times.recv_ping = time.time()
                 self.connections[peer].ping_count += 1
             self.pong(peer)
+        elif pkt.startswith(b"ALIV"):
+            self.alive(peer)
+        elif pkt.startswith(b"UP  "):
+            pass
+        elif pkt.startswith(b"UP? "):
+            self.send(b"UP  " + "✔ ".encode("utf-8"), peer)
+        elif pkt.startswith(b"INFO"):
+            uptime = os.system("uptime")
+            info = {"name":"pyM17", "version":"0.9", "protocol":"2021-12-22-dev", "uptime":uptime}
+            self.send(b"INFO" + json.dumps(info).encode("utf-8"), peer)
         elif pkt.startswith(b"PONG"):
             self.connections[peer].times.recv_pong = time.time()
             self.connections[peer].pong_count += 1

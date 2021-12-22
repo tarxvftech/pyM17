@@ -177,4 +177,6 @@ if __name__ == "__main__":
         show_help()
     else:
         for each in sys.argv[1:]:
-            print(Address(callsign=each))
+            a=Address(callsign=each)
+            print(a, bytes(a))
+            import pdb; pdb.set_trace()
