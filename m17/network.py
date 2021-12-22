@@ -35,6 +35,19 @@ def m17ref_name2host(refname):
 
 
 
+class reflector_checker:
+    def __init__(self,reflist):
+        self.reflist = reflist
+    def check(self, reflector):
+        pass
+    def start_allcheck(self):
+        for ref in self.reflist:
+            self.check(ref)
+    def results(self):
+        pass
+    @property
+    def results_ready(self):
+        return False
 
 class n7tae_protocol:
     """
@@ -189,7 +202,8 @@ class n7tae_protocol:
 
     def pong(self, peer=None):
         data = b"PONG" + self.mycall_b 
-        self.connections[peer].times.send_pong = time.time()
+        if peer in self.connections:
+            self.connections[peer].times.send_pong = time.time()
         self.send(data, peer)
 
     def ping(self, peer=None):
@@ -236,7 +250,7 @@ class n7tae_protocol:
             if peer in self.connections:
                 self.connections[peer].times.recv = time.time()
             else:
-                if bs[:4] != b"CONN":
+                if bs[:4] not in  [b"CONN",b"PING",b"PONG"]:
                     #drop it on the floor? or nack it?
                     # self.nack(peer)
                     # pp(self.connections)
@@ -251,8 +265,9 @@ class n7tae_protocol:
         #recv should ensure peer is in our active connections list before calling us
         # self.log.debug("RECV %s: %s"%(peer, pkt))
         if pkt.startswith(b"PING"):
-            self.connections[peer].times.recv_ping = time.time()
-            self.connections[peer].ping_count += 1
+            if peer in self.connections:
+                self.connections[peer].times.recv_ping = time.time()
+                self.connections[peer].ping_count += 1
             self.pong(peer)
         elif pkt.startswith(b"PONG"):
             self.connections[peer].times.recv_pong = time.time()
