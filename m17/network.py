@@ -194,7 +194,8 @@ class n7tae_protocol:
 
     def ping(self, peer=None):
         data = b"PING" + self.mycall_b 
-        self.connections[peer].times.send_ping = time.time()
+        if peer in self.connections:
+            self.connections[peer].times.send_ping = time.time()
         self.send(data, peer)
 
     def ack(self, peer=None):

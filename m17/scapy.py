@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+# https://github.com/secdev/scapy/blob/master/scapy/fields.py
+
 from m17.address import Address
 import m17.misc as misc
 import scapy
