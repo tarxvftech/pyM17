@@ -10,6 +10,7 @@ import socket
 import logging
 import unittest
 import binascii
+import subprocess
 
 import queue
 import threading
@@ -306,10 +307,12 @@ class n7tae_protocol:
         elif pkt.startswith(b"INFO"):
             print("INFO",len(pkt), pkt)
             if len(pkt) == 4:
-                uptime = os.system("uptime",shell=True)
+                #query, so respond
+                uptime = subprocess.getoutput("uptime")
                 info = {"name":"pyM17", "version":"0.9", "protocol":"2021-12-22-dev", "uptime":uptime}
                 self.send(b"INFO" + json.dumps(info).encode("utf-8"), peer)
             else:
+                #reply, so don't respond
                 print(pkt)
         elif pkt.startswith(b"PONG"):
             if peer in self.connections:
@@ -340,8 +343,11 @@ class n7tae_protocol:
                 #really i don't think we should NACK them for already being connected. That's rude.
                 #but leaving it as-is for now
         elif pkt.startswith(b"DISC"):
-            if peer in self.connections:
+            if len(pkt) > 4:
                 return self.handle_disc( pkt[4:], peer)
+            else:
+                if peer in self.connections:
+                    self.del_connection(peer=peer)
         elif pkt.startswith(b"M17 "):
             # self.log.warning("M17 packet magic: %s"%(pkt[:4]))
             return pkt, peer
