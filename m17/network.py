@@ -47,6 +47,7 @@ class n7tae_protocol:
         self.log = logging.getLogger("n7tae")
         self.bind = bind if bind else ("0.0.0.0",17000+random.randint(1,999))
         self.peer = None
+        self.starttime = time.time()
 
 
         #self.connections, a dict where 
@@ -305,11 +306,10 @@ class n7tae_protocol:
         elif pkt.startswith(b"UP? "):
             self.send(b"UP  " + "✔ ".encode("utf-8"), peer)
         elif pkt.startswith(b"INFO"):
-            print("INFO",len(pkt), pkt)
             if len(pkt) == 4:
                 #query, so respond
                 uptime = subprocess.getoutput("uptime")
-                info = {"name":"pyM17", "version":"0.9", "protocol":"2021-12-22-dev", "uptime":uptime}
+                info = {"name":"pyM17", "version":"0.9", "protocol":"2021-12-22-dev", "hostuptime":uptime, "reflectoruptime": time.time()-self.starttime}
                 self.send(b"INFO" + json.dumps(info).encode("utf-8"), peer)
             else:
                 #reply, so don't respond
