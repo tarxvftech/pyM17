@@ -306,7 +306,7 @@ class n7tae_protocol:
         elif pkt.startswith(b"INFO"):
             print("INFO",len(pkt), pkt)
             if len(pkt) == 4:
-                uptime = os.system("uptime")
+                uptime = os.system("uptime",shell=True)
                 info = {"name":"pyM17", "version":"0.9", "protocol":"2021-12-22-dev", "uptime":uptime}
                 self.send(b"INFO" + json.dumps(info).encode("utf-8"), peer)
             else:
