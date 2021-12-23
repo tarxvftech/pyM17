@@ -34,29 +34,6 @@ def m17ref_name2host(refname):
     # return "%s.m17ref.tarxvf.tech"%(refname)
 
 
-
-class reflector_checker:
-    def __init__(self,reflist):
-        self.reflist = reflist
-        self.prot = n7tae_protocol("U4TIME")
-        self.proc = threading.Thread(name="refchecker", 
-                target=self.loop, 
-                args=( 
-                    self.prot,
-                    self.mycall, 
-                    ))
-        self.proc.daemon = True
-        self.start()
-    def start_allcheck(self):
-        for ref in self.reflist:
-            self.check(ref)
-            self.prot.connect(call,"Z", peer)
-    # def results(self):
-        # pass
-    # @property
-    # def results_ready(self):
-        # return False
-
 class n7tae_protocol:
     """
     Requires 
@@ -85,6 +62,32 @@ class n7tae_protocol:
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind(self.bind)
         self.sock.setblocking(False)
+
+    def is_alive(self, call=None, module=None, peer=None):
+        #normalize call to peer, and peer to ip
+        if not peer and not call:
+            raise(Exception("What exactly are you connecting to? Provide either a host,port tuple or a reflector name"))
+        elif not peer and call:
+            host = m17ref_name2host(call)
+            port = 17000
+            peer = (host,port)
+        ip = socket.gethostbyname(peer[0])
+        if ip != peer[0]:
+            peer = (ip,peer[1])
+
+        if peer in self.connections:
+            conn = self.connections[peer]
+            now = time.time()
+            times = [
+                    conn.times.recv_ping,
+                    conn.times.recv_pong,
+                    conn.times.recv,
+                    ]
+            deltatimes = [now - t for t in times if t is not None]
+            up = [t < 5 for t in deltatimes ]
+            if any(up):
+                return True
+        return False
 
     def add_connection(self, call, module, peer):
         if peer in self.connections:
@@ -193,6 +196,9 @@ class n7tae_protocol:
         pkt must not have the front magic bytes (4 bytes)
         so make sure to strip them (i.e. pass in pkt[4:] )
         """
+        #TODO reflector sends CONN when it receives  DISC
+        #need to handle when DISC has no callsign to disconnect
+        #and use that to know to delete the connection and do nothing further
         callsign_40 = pkt[:6]
         addr = int.from_bytes(callsign_40, 'big')
         theircall = m17.address.Address(addr=addr)
@@ -268,12 +274,15 @@ class n7tae_protocol:
             if peer in self.connections:
                 self.connections[peer].times.recv = time.time()
             else:
-                if bs[:4] not in  [b"CONN",b"PING",b"PONG"]:
+                if bs[:4] not in  [b"CONN",b"PING",b"PONG"]: #TODO: add ALIV, UP?, etc
                     #drop it on the floor? or nack it?
                     # self.nack(peer)
                     # pp(self.connections)
                     self.log.warning("packet from unregistered peer %s:%d %s..."%(peer[0],peer[1], binascii.hexlify(bs[:16])))
                     return None
+                else:
+                    print(peer,bs[:4])
+                    self.log.debug("packet from unregistered peer %s:%d %s..."%(peer[0],peer[1], binascii.hexlify(bs[:16])))
         except BlockingIOError as e:
             return None
         return self.handle(bs, peer)
@@ -281,6 +290,7 @@ class n7tae_protocol:
 
     def handle(self, pkt, peer):
         #recv should ensure peer is in our active connections list before calling us
+        #except for CONN, PING, and PONG
         # self.log.debug("RECV %s: %s"%(peer, pkt))
         if pkt.startswith(b"PING"):
             if peer in self.connections:
@@ -294,12 +304,17 @@ class n7tae_protocol:
         elif pkt.startswith(b"UP? "):
             self.send(b"UP  " + "✔ ".encode("utf-8"), peer)
         elif pkt.startswith(b"INFO"):
-            uptime = os.system("uptime")
-            info = {"name":"pyM17", "version":"0.9", "protocol":"2021-12-22-dev", "uptime":uptime}
-            self.send(b"INFO" + json.dumps(info).encode("utf-8"), peer)
+            print("INFO",len(pkt), pkt)
+            if len(pkt) == 4:
+                uptime = os.system("uptime")
+                info = {"name":"pyM17", "version":"0.9", "protocol":"2021-12-22-dev", "uptime":uptime}
+                self.send(b"INFO" + json.dumps(info).encode("utf-8"), peer)
+            else:
+                print(pkt)
         elif pkt.startswith(b"PONG"):
-            self.connections[peer].times.recv_pong = time.time()
-            self.connections[peer].pong_count += 1
+            if peer in self.connections:
+                self.connections[peer].times.recv_pong = time.time()
+                self.connections[peer].pong_count += 1
         elif pkt.startswith(b"ACKN"):
             #successful connection, but as a client
             call = self.connections[peer].call
@@ -325,7 +340,8 @@ class n7tae_protocol:
                 #really i don't think we should NACK them for already being connected. That's rude.
                 #but leaving it as-is for now
         elif pkt.startswith(b"DISC"):
-            return self.handle_disc( pkt[4:], peer)
+            if peer in self.connections:
+                return self.handle_disc( pkt[4:], peer)
         elif pkt.startswith(b"M17 "):
             # self.log.warning("M17 packet magic: %s"%(pkt[:4]))
             return pkt, peer
@@ -419,6 +435,23 @@ class simple_n7tae_reflector():
             except BlockingIOError as e:
                 pass
             time.sleep(.00001)
+
+class reflector_checker(simple_n7tae_client):
+    def start_check(self, call=None, peer=None):
+        self.prot.connect(call,"Z", peer)
+    def close(self):
+        peers = list(self.prot.connections.keys()) 
+        #list() allows us to avoid modifying the thing we're iterating over
+        #by del_connection-ing the peer
+        for peer in peers: 
+            #del before DISC otherwise we may try to CONN again?
+            #TODO this isn't sufficient...
+            self.prot.del_connection(peer=peer)
+            self.prot.disco(peer=peer)
+        self.prot.close()
+    def results(self):
+        reflist = map(lambda x: x.call, self.prot.connections.values())
+        return {ref: self.prot.is_alive(call=ref) for ref in reflist}
 
 class ReflectorProtocolTests(unittest.TestCase):
     def testPingPong(self):

@@ -16,6 +16,19 @@ from m17.address import Address
 
 #reflector app (mycall)
 
+def refquery():
+    x = network.simple_n7tae_client(mycall="U4TIME",bind=None)
+    x.connect("M17-XVF","Z")
+    import pdb; pdb.set_trace()
+def refchk(*args):
+    checker = network.reflector_checker(mycall="U4TIME",bind=None)
+    for ref in args:
+        checker.start_check(ref)
+    time.sleep(3)
+    print(checker.results())
+    checker.close()
+
+
 def M17SMS(mycall, refname, theirmodule):
     shell = textshell(mycall)
     config = default_config(3200)
