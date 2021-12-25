@@ -130,11 +130,9 @@ class TwoWayBlock:
     def sender(self):
         return self.probe("send", "in")
 
-def reflector(mycall, *args, **kwargs):
+def reflector(reflector_tri, *args, **kwargs):
+    mycall = "M17-" + reflector_tri
     bind=("0.0.0.0",17000)
-    #using the reflector like so:
-    # network.simple_n7tae_reflector(mycall, bind=bind) 
-    #exits immediately, so make sure to tell it to not daemonize the thread so it stays running:
     import sentry_sdk
     sentry_sdk.init(
         "https://241f77e18c5c44dd8c245c3c26588c03@o474357.ingest.sentry.io/6123140",
@@ -143,8 +141,11 @@ def reflector(mycall, *args, **kwargs):
         # We recommend adjusting this value in production.
         traces_sample_rate=1.0
         )
-
+    #using the reflector like so:
+    # network.simple_n7tae_reflector(mycall, bind=bind) 
+    #exits immediately, so make sure to tell it to not daemonize the thread so it stays running:
     network.simple_n7tae_reflector(mycall, bind=bind, nodaemon=True)
+    #if we exit, depend on systemd to bring us back up and hope sentry logs the error
 
 def tee_s3uploader(bucket,filebasename):
     import boto3
