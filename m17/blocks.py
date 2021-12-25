@@ -134,6 +134,15 @@ def reflector(mycall, bind=("0.0.0.0",17000)):
     #using the reflector like so:
     # network.simple_n7tae_reflector(mycall, bind=bind) 
     #exits immediately, so make sure to tell it to not daemonize the thread so it stays running:
+    import sentry_sdk
+    sentry_sdk.init(
+        "https://241f77e18c5c44dd8c245c3c26588c03@o474357.ingest.sentry.io/6123140",
+        # Set traces_sample_rate to 1.0 to capture 100%
+        # of transactions for performance monitoring.
+        # We recommend adjusting this value in production.
+        traces_sample_rate=1.0
+        )
+
     network.simple_n7tae_reflector(mycall, bind=bind, nodaemon=True)
 
 def tee_s3uploader(bucket,filebasename):

@@ -20,6 +20,7 @@ def refquery():
     x = network.simple_n7tae_client(mycall="U4TIME",bind=None)
     x.connect("M17-XVF","Z")
     import pdb; pdb.set_trace()
+
 def refchk(*args):
     checker = network.reflector_checker(mycall="U4TIME",bind=None)
     for ref in args:
@@ -69,6 +70,14 @@ def parrot(refname, theirmodule):
     #A parrot service for M17 - it's a full client that records and plays back after incoming stream is over PTT is released
     mycall = "MP4RROT"
     mymodule = "Z"
+    import sentry_sdk
+    sentry_sdk.init(
+        "https://241f77e18c5c44dd8c245c3c26588c03@o474357.ingest.sentry.io/6123140",
+        # Set traces_sample_rate to 1.0 to capture 100%
+        # of transactions for performance monitoring.
+        # We recommend adjusting this value in production.
+        traces_sample_rate=1.0
+    )
 
     me = Address(callsign=mycall)
     me.set_reflector_module(mymodule)

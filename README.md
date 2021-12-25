@@ -64,3 +64,9 @@ and I will do my best to help.
 TODO:
 https://github.com/joerick/cibuildwheel
 
+
+Ubuntu 20 development:
+
+apt install libcodec2-dev python3.8-venv python3-pip python3-as-python
+pip install wheel numpy Cython
+pip install -r requirements.txt

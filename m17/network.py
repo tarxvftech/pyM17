@@ -433,7 +433,9 @@ class simple_n7tae_reflector():
         """
         while 1:
             try:
-                ret = prot.recv()
+                ret = prot.recv() 
+                #only spits out packets the protocol itself doesn't handle but is otherwise transparent
+                #e.g. no filtering or anything
                 if ret is not None:
                     print("SERVER:",ret)
                     pkt, conn = ret

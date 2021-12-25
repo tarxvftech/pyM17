@@ -11,7 +11,7 @@ URL = 'https://git.mmcginty.me/mike/pym17'
 EMAIL = 'pyM17@tarxvf.tech'
 AUTHOR = 'tarxvf'
 REQUIRES_PYTHON = '>=3.5.0'
-VERSION = '0.0.15'
+VERSION = '0.9.0'
 
 REQUIRED=[
         "bitstruct",
