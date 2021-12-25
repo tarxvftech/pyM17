@@ -130,8 +130,7 @@ class TwoWayBlock:
     def sender(self):
         return self.probe("send", "in")
 
-def reflector(reflector_tri, *args, **kwargs):
-    mycall = "M17-" + reflector_tri
+def reflector(mycall, *args, **kwargs):
     bind=("0.0.0.0",17000)
     import sentry_sdk
     sentry_sdk.init(
