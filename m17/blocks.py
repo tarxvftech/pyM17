@@ -130,7 +130,8 @@ class TwoWayBlock:
     def sender(self):
         return self.probe("send", "in")
 
-def reflector(mycall, bind=("0.0.0.0",17000)):
+def reflector(mycall, *args, **kwargs):
+    bind=("0.0.0.0",17000)
     #using the reflector like so:
     # network.simple_n7tae_reflector(mycall, bind=bind) 
     #exits immediately, so make sure to tell it to not daemonize the thread so it stays running:

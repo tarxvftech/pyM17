@@ -45,7 +45,10 @@ class n7tae_protocol:
     """
     def __init__(self, mycallsign, bind=None):
         self.log = logging.getLogger("n7tae")
-        self.bind = bind if bind else ("0.0.0.0",17000+random.randint(1,999))
+        if bind:
+            self.bind = bind
+        else:
+            self.bind = ("0.0.0.0",17000+random.randint(1,999))
         self.peer = None
         self.starttime = time.time()
 
