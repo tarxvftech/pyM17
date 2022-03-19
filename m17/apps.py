@@ -16,6 +16,12 @@ from m17.address import Address
 
 #reflector app (mycall)
 
+def player(filename):
+    play_chain = [stream_reader(filename), m17streams2frames, payload2codec2, codec2dec, spkr_audio]
+    config = default_config(3200)
+    modules, wait = modular(config, [play_chain])
+    wait(modules)
+
 def refquery():
     x = network.simple_n7tae_client(mycall="U4TIME",bind=None)
     x.connect("M17-XVF","Z")
@@ -86,7 +92,8 @@ def parrot(refname, theirmodule):
 
     c = client_blocks(mycall)
     c.connect(refname,theirmodule)
-    chain = [c.receiver(), m17parse, m17voiceframes2streams, tee('stream'), teestreamfile('parrot'), m17streams2frames, 
+    chain = [c.receiver(), m17parse, m17voiceframes2streams, tee('stream'), teestreamfile('parrot'), 
+            m17streams2frames, 
             m17rewriter(src=me,dst=them, streamid=random.randint(1,2**16-1)),
             throttle(27), 
             #nominally 25, but i'm trying a little higher to try to workaround some stuttering in a temporary way 

@@ -1,3 +1,4 @@
+import os
 import sys
 import cmd
 import time
@@ -51,6 +52,18 @@ def codeblock(callback):
             outq.put(y)
     return fn
 
+def stream_reader(filename):
+    def fn(config, inq, outq):
+        with open(filename, "rb") as fd:
+            data = fd.read()
+            m17s = M17_IPStream.from_bytes(data)
+            outq.put(m17s)
+        while 1: #infinite loop so we don't kill the rest of the chain?
+            #which means we'll hang forever...
+            #fine for now.
+            #obviously not fine for later
+            time.sleep(1)
+    return fn
 
 def m17rewriter(*args,**kwargs):
     def m17rewriter_fn(config,inq,outq,testmode=False):
