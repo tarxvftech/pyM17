@@ -48,7 +48,7 @@ class n7tae_protocol:
         if bind:
             self.bind = bind
         else:
-            self.bind = ("0.0.0.0",17000+random.randint(1,999))
+            self.bind = ("::",17000+random.randint(1,999))
         self.peer = None
         self.starttime = time.time()
 
@@ -63,7 +63,7 @@ class n7tae_protocol:
         self.mycallsign = mycallsign
         self.mycall_b = bytes(m17.address.Address(callsign=self.mycallsign))
 
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind(self.bind)
         self.sock.setblocking(False)
