@@ -2,6 +2,7 @@
 
 # https://github.com/secdev/scapy/blob/master/scapy/fields.py
 
+import string
 from m17.address import Address
 import m17.misc as misc
 import scapy
@@ -116,7 +117,7 @@ class M17Addr( sf.Field[Union[str,int], bytes] ):
         return (s[self.sz:],
                 self.m2i(pkt, self.struct.unpack(s[:self.sz])))  # type: ignore
 
-class M17PacketType(sp.Packet):
+class M17Type(sp.Packet):
     """
     0 	Packet/stream indicator, 0=packet, 1=stream
     1..2 	Data type indicator, 012 =data (D), 102 =voice (V), 112 =V+D, 002 =reserved
@@ -125,6 +126,7 @@ class M17PacketType(sp.Packet):
     7..10 	Channel Access Number (CAN)
     11..15 	Reserved (don’t care)
     """
+    name = "M17Type"
     fields_desc = [
             sf.BitField('_resv',0,5 ),
             sf.BitField('can',0,4 ),
@@ -141,10 +143,33 @@ class M17LSF(sp.Packet):
     fields_desc = [
             M17Addr('dst', ""), #can be either way
             M17Addr('src', 0x0),
-            M17PacketType, #16 bits
+            M17Type, #16 bits
             # sf.ShortField('streamtype',0),
             BENBytesField('meta',0,14),
             ]
+
+def BytesFromLogHex(multilinestring):
+    example="""
+4d 31 37 20 d5 98 17 d8 0d cb 19 83 00 00 13 27   *M17 ...........'*
+13 be 00 05 67 7f 00 00 d0 08 00 98 67 7f 00 00   *....g.......g...*
+d0 0d 00 01 86 19 4c 6a d0 7d 31 ef 40 04 ae 7a   *......Lj.}1.@..z*
+54 fd 91 4f dc 23                                 *T..O.#*
+    """
+    hexstring = ''
+    for line in multilinestring.splitlines():
+        i = 0
+        for c in line:
+            if c == '*':
+                break
+            if c.upper() in string.hexdigits.upper():
+                hexstring += c
+            if i > 16*3:
+                break
+            i+=1
+    z = binascii.unhexlify(hexstring)
+    return z
+
+
 class M17LSFandCRC(sp.Packet):
     #not implemented yet
     name = "M17LSFandCRC"
@@ -362,9 +387,25 @@ if __name__ == "__main__":
     # import pdb; pdb.set_trace()
 
 
+    b = BytesFromLogHex("""
+4d 31 37 20 d5 98 17 d8 0d cb 19 83 00 00 13 27   *M17 ...........'*
+13 be 00 05 67 7f 00 00 d0 08 00 98 67 7f 00 00   *....g.......g...*
+d0 0d 00 01 86 19 4c 6a d0 7d 31 ef 40 04 ae 7a   *......Lj.}1.@..z*
+54 fd 91 4f dc 23                                 *T..O.#*
+""")
+    c = BytesFromLogHex("""
+4D 31 37 20 CF FE 06 17 22 A2 1A ED 00 00 00 B6    M17 ....".......
+7F 39 00 05 00 00 00 00 00 00 00 00 00 00 00 00    .9..............
+00 00 00 00 01 00 09 43 9C E4 21 08 01 00 09 43    .......C..!....C
+9C E4 21 08 6F 3E                                  ..!.o>
+""")
+    pkt1 = DVRef(_pkt=b)
+    pkt2 = DVRef(_pkt=c)
+    a = s.rdpcap("scapy_test.pcapng")
+    a.summary()
+    # import pdb; pdb.set_trace()
     while 1:
         a=s.sniff(filter="udp and port 17000",timeout=2)
         a.summary()
-    # a = s.rdpcap("scapy_test.pcapng")
-    # a.summary()
+
 
