@@ -373,7 +373,7 @@ class client_blocks(TwoWayBlock):
             if not sendq.empty():
                 data= sendq.get_nowait()
                 cli.sendq.put(data)
-            time.sleep(.000001)
+            time.sleep(.00005)
 
 
 def null(config, inq, outq):

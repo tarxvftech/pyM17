@@ -45,7 +45,6 @@ def M17SMS(mycall, refname, theirmodule):
     #this is easy at this specific moment because textshell isn't hooked up to the protocol either lol
 
     n7tae.connect(refname,theirmodule)
-    # rxchain = [ shell.receiver(), m17packetframe, tobytes, n7tae.sender() ]
     rxchain = [ shell.receiver(), m17packetframe, tobytes, n7tae.sender() ]
     txchain = [ n7tae.receiver(), 
             m17parse, m17frame_extractpayload, m17packet_payload2body, toutf8,
@@ -111,6 +110,7 @@ def streams_toS3(mycall, refname,theirmodule):
     them = Address(callsign=refname)
     them.set_reflector_module(theirmodule)
     c = client_blocks(mycall)
+    c.connect(refname,theirmodule)
     rx_chain = [c.receiver(), m17parse, m17voiceframes2streams, tee(''), tee_s3uploader_m17streams('m17','transcribeme'), null ]
     config = {}
     c.start()
@@ -122,17 +122,15 @@ def stream_saver(mycall, refname,theirmodule):
     mymodule="S"
     assert( refname.startswith("M17-") and len(refname) <= 7 )
     #should also be able to look up registered port in dns at some point
-    if refname != "M17-XVF":
-        host = network.m17ref_name2host(refname)
-    else:
-        host = "127.0.0.1"
-    # print(host)
+    host = network.m17ref_name2host(refname)
+    print(host)
 
     me = Address(callsign=mycall)
     me.set_reflector_module(mymodule)
     them = Address(callsign=refname)
     them.set_reflector_module(theirmodule)
     c = client_blocks(mycall)
+    c.connect(refname,theirmodule)
     rx_chain = [c.receiver(), m17parse, m17voiceframes2streams, tee('stream'), teestreamfile('saved'), null ]
     # rx_chain = [m17parse,... ]
     config = {}
@@ -150,6 +148,7 @@ def client(mycall,mymodule,refname,theirmodule,port=default_port,mode=3200):
     them = Address(callsign=refname)
     them.set_reflector_module(theirmodule)
     c = client_blocks(mycall)
+    c.connect(refname,theirmodule)
 
     tx_chain = [mic_audio, codec2enc, vox, m17voiceframe, tobytes, c.sender()]
     rx_chain = [c.receiver(), m17parse, payload2codec2, codec2dec, spkr_audio]
