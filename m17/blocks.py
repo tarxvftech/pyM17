@@ -131,7 +131,7 @@ class TwoWayBlock:
         return self.probe("send", "in")
 
 def reflector(mycall, *args, **kwargs):
-    bind=("0.0.0.0",17000)
+    bind=("::",17000)
     import sentry_sdk
     sentry_sdk.init(
         "https://241f77e18c5c44dd8c245c3c26588c03@o474357.ingest.sentry.io/6123140",

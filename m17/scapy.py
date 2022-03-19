@@ -405,7 +405,7 @@ d0 0d 00 01 86 19 4c 6a d0 7d 31 ef 40 04 ae 7a   *......Lj.}1.@..z*
     a.summary()
     # import pdb; pdb.set_trace()
     while 1:
-        a=s.sniff(filter="udp and port 17000",timeout=2)
+        a=s.sniff(filter="udp and port 17000 or icmp",timeout=2)
         a.summary()
 
 
