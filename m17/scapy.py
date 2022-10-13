@@ -403,7 +403,7 @@ d0 0d 00 01 86 19 4c 6a d0 7d 31 ef 40 04 ae 7a   *......Lj.}1.@..z*
     pkt2 = DVRef(_pkt=c)
     a = s.rdpcap("scapy_test.pcapng")
     a.summary()
-    # import pdb; pdb.set_trace()
+    import pdb; pdb.set_trace()
     while 1:
         a=s.sniff(filter="udp and port 17000 or icmp",timeout=2)
         a.summary()
