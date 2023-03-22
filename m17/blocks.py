@@ -915,6 +915,12 @@ def integer_decimate(i):
             outq.put( x[::i] )
     return int_decimate_fn
 
+def to_stereo(config, inq, outq):
+    while 1:
+        x = inq.get()
+        z = numpy.repeat(x,2)
+        outq.put( z )
+
 def integer_interpolate(i):
     """
     for each incoming list of things, interpolate
