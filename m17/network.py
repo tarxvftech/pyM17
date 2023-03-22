@@ -383,6 +383,8 @@ class simple_n7tae_client():
 
     def connect(self, *args, **kwargs):
         return self.prot.connect(*args,**kwargs)
+    def disco(self, *args, **kwargs):
+        return self.prot.disco(*args,**kwargs)
     def start(self):
         self.proc.start()
     def join(self):

@@ -361,6 +361,7 @@ class client_blocks(TwoWayBlock):
     def start(self,daemon=True):
         self.process.daemon = daemon
         self.process.start()
+
     def connect(self, call=None, module="A", peer=None):
         self.qs["cmds"].put( ("connect", call, module, peer ) )
 
@@ -1038,10 +1039,11 @@ def modular(config, chains):
 
     for chainidx,chain in enumerate(modules["chains"]):
         inq = None
+        manager = multiprocessing.Manager()
         for fnidx,fn in enumerate(chain):
             name = fn.__name__
             if fnidx != len(chain):
-                outq = multiprocessing.Queue()
+                outq = manager.Queue()
                 modules["queues"].append(outq)
             else:
                 outq = None
@@ -1075,7 +1077,6 @@ def modular(config, chains):
                 #messy
                 #TODO make a rwlock for indicating shutdown
                 proc["process"].terminate()
-    # wait()
     return modules, wait
     """
     Good links I found:
